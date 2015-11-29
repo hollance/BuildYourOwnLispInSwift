@@ -96,53 +96,55 @@ extension Environment: CustomStringConvertible {
 
 // MARK: - Evaluating
 
-func evalSExpression(env: Environment, var _ values: [Value]) -> Value {
-  //print("BEFORE \(values)")
+extension Value {
+  func eval(env: Environment) -> Value {
+    //print("eval \(self)")
 
-  // Evaluate children. If any of them are symbols, they will be converted into
-  // the associated value from the environment, such as a function, a number, or
-  // a Q-Expression.
-  for var i = 0; i < values.count; ++i {
-    values[i] = eval(env, values[i])
+    switch self {
+      // Return the value associated with the symbol in the environment.
+    case .Symbol(let name):
+      return env.get(name)
+
+      // Evaluate the values inside the S-Expression recursively.
+    case .SExpression(let values):
+      return evalList(env, values)
+
+      // All other value types are passed along literally without evaluating
+    default:
+      return self
+    }
   }
 
-  //print("AFTER \(values)")
+  private func evalList(env: Environment, var _ values: [Value]) -> Value {
+    //print("BEFORE \(values)")
 
-  // If any children are errors, return the first error we encounter.
-  for value in values {
-    if case .Error = value { return value }
-  }
+    // Evaluate children. If any of them are symbols, they will be converted into
+    // the associated value from the environment, such as a function, a number, or
+    // a Q-Expression.
+    for var i = 0; i < values.count; ++i {
+      values[i] = values[i].eval(env)
+    }
 
-  // Empty expression.
-  if values.count == 0 { return Value.empty() }
+    //print("AFTER \(values)")
 
-  // Single expression; simply return the first (and only) child.
-  if values.count == 1 { return values[0] }
+    // If any children are errors, return the first error we encounter.
+    for value in values {
+      if case .Error = value { return value }
+    }
 
-  // Ensure first value is a function after evaluation, then call it on the
-  // remaining values.
-  let first = values.removeFirst()
-  if case .Function(_, let code) = first {
-    return code(env: env, values: values)
-  }
-  return .Error(message: "Expected function, got \(first)")
-}
+    // Empty expression.
+    if values.count == 0 { return Value.empty() }
 
-func eval(env: Environment, _ value: Value) -> Value {
-  //print("eval \(value)")
+    // Single expression; simply return the first (and only) child.
+    if values.count == 1 { return values[0] }
 
-  switch value {
-    // Return the value associated with the symbol in the environment.
-  case .Symbol(let name):
-    return env.get(name)
-
-    // Evaluate the values inside the S-Expression recursively.
-  case .SExpression(let values):
-    return evalSExpression(env, values)
-
-    // All other value types are passed along literally without evaluating
-  default:
-    return value
+    // Ensure first value is a function after evaluation, then call it on the
+    // remaining values.
+    let first = values.removeFirst()
+    if case .Function(_, let code) = first {
+      return code(env: env, values: values)
+    }
+    return .Error(message: "Expected function, got \(first)")
   }
 }
 
@@ -156,7 +158,7 @@ let builtin_eval: Builtin = { env, values in
   guard case .QExpression(let qvalues) = values[0] else {
     return .Error(message: "Function 'eval' expects Q-Expression, got \(values[0])")
   }
-  return eval(env, .SExpression(values: qvalues))
+  return Value.SExpression(values: qvalues).eval(env)
 }
 
 // Takes one or more values and returns a new Q-Expression containing those values.
@@ -351,55 +353,61 @@ func addBuiltins(env: Environment) {
 let e = Environment()
 addBuiltins(e)
 
-let v1 = Value.Error(message: "Foutje")
+//let v1 = Value.Error(message: "Foutje")
+//let v3 = Value.Number(value: -456)
+//let v4 = Value.Function(name: "lol", code: { _ in return Value.empty() })
+//let v5 = Value.Symbol(name: "x")
+//let v6 = Value.Symbol(name: "+")
+//let v7 = Value.QExpression(values: [.Symbol(name: "yay")])
+//let v2 = Value.SExpression(values: [v6, v3, v5])
+//
+//// fake a "def"
+////e.put(name: "something", value: .Number(value: 2048))
+//
+//// ( def { x y } 123 456 )
+//let d3 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y")])
+//let d2 = Value.Symbol(name: "def")
+//let d1 = Value.SExpression(values: [d2, d3, .Number(value: 123), .Number(value: 456)])
+//
+//let d5 = Value.SExpression(values: [v6, .Number(value: 123), .Number(value: 456)])
+//let d0 = Value.SExpression(values: [d2, d3, d5, .Number(value: 789)])
+//
+//print("> \(d0)")
+//print(eval(e, d0))
+//print(eval(e, v5))
+//print("> \(d1)")
+//print(eval(e, d1))
+//print(eval(e, v5))
+//print("> \(v2)")
+//print(eval(e, v2))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "printenv"), .Number(value: 1)])))
+//
+//let q1 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y"), .Symbol(name: "z")])
+//
+//print(eval(e, q1))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), q1])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), .QExpression(values: [])])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), .QExpression(values: [.Number(value: 100)])])))
+//
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "list"), .Symbol(name: "x"), .Number(value: 200), q1])))
+//
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), q1])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), .QExpression(values: [])])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), .QExpression(values: [.Number(value: 100)])])))
+//
+//let q2 = Value.QExpression(values: [.Symbol(name: "list"), .Number(value: 1), .Number(value: 2)])
+//print(eval(e, q2))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "eval"), q2])))
+//
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "join"), q2, q2])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "len"), q2])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "len"), .QExpression(values: [])])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "cons"), .Number(value: 3), q2])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "cons"), q2, q2])))
+//print(eval(e, Value.SExpression(values: [.Symbol(name: "init"), q2])))
+
 let v3 = Value.Number(value: -456)
-let v4 = Value.Function(name: "lol", code: { _ in return Value.empty() })
-let v5 = Value.Symbol(name: "x")
-let v6 = Value.Symbol(name: "+")
-let v7 = Value.QExpression(values: [.Symbol(name: "yay")])
-let v2 = Value.SExpression(values: [v6, v3, v5])
-
-// fake a "def"
-//e.put(name: "something", value: .Number(value: 2048))
-
-// ( def { x y } 123 456 )
-let d3 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y")])
-let d2 = Value.Symbol(name: "def")
-let d1 = Value.SExpression(values: [d2, d3, .Number(value: 123), .Number(value: 456)])
-
-let d5 = Value.SExpression(values: [v6, .Number(value: 123), .Number(value: 456)])
-let d0 = Value.SExpression(values: [d2, d3, d5, .Number(value: 789)])
-
-print("> \(d0)")
-print(eval(e, d0))
-print(eval(e, v5))
-print("> \(d1)")
-print(eval(e, d1))
-print(eval(e, v5))
-print("> \(v2)")
-print(eval(e, v2))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "printenv"), .Number(value: 1)])))
+print(v3.eval(e))
 
 let q1 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y"), .Symbol(name: "z")])
-
-print(eval(e, q1))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), q1])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), .QExpression(values: [])])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), .QExpression(values: [.Number(value: 100)])])))
-
-print(eval(e, Value.SExpression(values: [.Symbol(name: "list"), .Symbol(name: "x"), .Number(value: 200), q1])))
-
-print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), q1])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), .QExpression(values: [])])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), .QExpression(values: [.Number(value: 100)])])))
-
-let q2 = Value.QExpression(values: [.Symbol(name: "list"), .Number(value: 1), .Number(value: 2)])
-print(eval(e, q2))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "eval"), q2])))
-
-print(eval(e, Value.SExpression(values: [.Symbol(name: "join"), q2, q2])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "len"), q2])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "len"), .QExpression(values: [])])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "cons"), .Number(value: 3), q2])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "cons"), q2, q2])))
-print(eval(e, Value.SExpression(values: [.Symbol(name: "init"), q2])))
+print(q1.eval(e))
