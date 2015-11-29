@@ -372,6 +372,73 @@ let builtin_printenv: Builtin = { env, values in
   return Value.empty()
 }
 
+// MARK: - Parser
+
+/*
+  This is a simplified version of the parser used in the original tutorial.
+  The top-level expression must be inside ( ) quotes.
+*/
+
+private func tokenizeAtom(s: String) -> Value {
+  if let i = Int(s) {
+    return .Number(value: i)
+  } else {
+    return .Symbol(name: s)
+  }
+}
+
+private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) -> Value {
+  var token = ""
+  var array = [Value]()
+
+  while i < s.endIndex {
+    let c = s[i]
+    i = i.successor()
+
+    // Symbol or number found.
+    if (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") ||
+       (c >= "0" && c <= "9") || c == "_" || c == "\\" ||
+        c == "+" || c == "-" || c == "*" || c == "/" ||
+        c == "=" || c == "<" || c == ">" || c == "!" || c == "&" {
+      token += "\(c)"
+    } else {
+      if !token.isEmpty {
+        array.append(tokenizeAtom(token))
+        token = ""
+      }
+
+      // Open a new list.
+      if c == "(" || c == "{" {
+        array.append(tokenizeList(s, &i, "\(c)"))
+      } else if type == "(" && c == ")" {
+        return .SExpression(values: array)
+      } else if type == "{" && c == "}" {
+        return .QExpression(values: array)
+      }
+    }
+  }
+
+  // Don't forget the very last token.
+  if !token.isEmpty {
+    array.append(tokenizeAtom(token))
+  }
+
+  if type == "(" {
+    return .Error(message: "Expected )")
+  } else if type == "{" {
+    return .Error(message: "Expected }")
+  } else if array.count == 1 {
+    return array[0]
+  } else {
+    return .SExpression(values: array)
+  }
+}
+
+func parse(s: String) -> Value {
+  var i = s.startIndex
+  return tokenizeList(s, &i, "")
+}
+
 // MARK: - Initialization
 
 extension Environment {
@@ -403,22 +470,18 @@ e.addBuiltinFunctions()
 
 // MARK: - Demo
 
-let d3 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y")])
-let d2 = Value.Symbol(name: "def")
-let d1 = Value.SExpression(values: [d2, d3, .Number(value: 10), .Number(value: 456)])
-print("> \(d1)")
-print(d1.eval(e))
+let s = [
+  "(+ 1 2 3)",
+  "(x y z)",
+  "(def {x y z} + 4 5)",
+  "(x y z)",
+  "({ x y z})",
+  "+ { x y { z }} 1",
+  "1",
+]
 
-let v3 = Value.Number(value: -456)
-let v5 = Value.Symbol(name: "x")
-let v6 = Value.Symbol(name: "+")
-let v2 = Value.SExpression(values: ["/", v3, v5])
-
-print("> \(v2)")
-print(v2.eval(e))
-
-let v7 = Value.SExpression(values: ["-", 123])
-
-print("> \(v7)")
-print(v7.eval(e))
-
+for z in s {
+  let v = parse(z)
+  print("> \(v)")
+  print(v.eval(e))
+}

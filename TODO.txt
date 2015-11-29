@@ -17,8 +17,6 @@ func expectQExpression(name: String, value: Value) -> [Value] {
 - Make Environment an (immutable) value type too
 
 - REPL
-
-- Parser (hand-rolled) (see my other Swift LISP)
-		lval* lval_read_num(mpc_ast_t* t) {
-		lval* lval_read(mpc_ast_t* t) {
-		main parsing loop
+  puts("Lispy Version 0.0.0.0.1");
+  puts("Press Ctrl+c to Exit\n");
+    char* input = readline("lispy> ");
