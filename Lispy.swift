@@ -100,7 +100,7 @@ class Environment {
     if let v = dictionary[name] {
       return v
     } else {
-      return .Error(message: String(format: "Unbound symbol '%@'", name))
+      return .Error(message: "Unbound symbol '\(name)'")
     }
   }
 
@@ -376,7 +376,6 @@ let builtin_printenv: Builtin = { env, values in
 
 /*
   This is a simplified version of the parser used in the original tutorial.
-  The top-level expression must be inside ( ) quotes.
 */
 
 private func tokenizeAtom(s: String) -> Value {
@@ -410,10 +409,18 @@ private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) ->
       // Open a new list.
       if c == "(" || c == "{" {
         array.append(tokenizeList(s, &i, "\(c)"))
-      } else if type == "(" && c == ")" {
-        return .SExpression(values: array)
-      } else if type == "{" && c == "}" {
-        return .QExpression(values: array)
+      } else if c == ")" {
+        if type == "(" {
+          return .SExpression(values: array)
+        } else {
+          return .Error(message: "Unexpected )")
+        }
+      } else if c == "}" {
+        if type == "{" {
+          return .QExpression(values: array)
+        } else {
+          return .Error(message: "Unexpected }")
+        }
       }
     }
   }
@@ -468,20 +475,27 @@ extension Environment {
 let e = Environment()
 e.addBuiltinFunctions()
 
-// MARK: - Demo
+// MARK: - REPL
 
-let s = [
-  "(+ 1 2 3)",
-  "(x y z)",
-  "(def {x y z} + 4 5)",
-  "(x y z)",
-  "({ x y z})",
-  "+ { x y { z }} 1",
-  "1",
-]
+func readInput() -> String {
+  let keyboard = NSFileHandle.fileHandleWithStandardInput()
+  let inputData = keyboard.availableData
+  let string = NSString(data: inputData, encoding: NSUTF8StringEncoding)!
+  return string.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
+}
 
-for z in s {
-  let v = parse(z)
-  print("> \(v)")
-  print(v.eval(e))
+print("Lispy Version 0.11")
+print("Press Ctrl+c to Exit")
+
+while true {
+  print("lispy> ", terminator: "")
+  fflush(__stdoutp)
+
+  let input = readInput()
+  let v = parse(input)
+  if case .Error(let message) = v {
+    print("Error: \(message)")
+  } else {
+    print(v.eval(e))
+  }
 }
