@@ -1,0 +1,27 @@
+- Using parser combinators (see Functional Programming in Swift etc)
+- REPL
+
+- It would be great to have a function error(format: "Unbound symbol '%@', name)
+  to make a Value.Error rather than having to do error(message: String(format: "..."))
+  [maybe see that blog post from apple about making an assert function]
+	https://developer.apple.com/swift/blog/?id=15
+
+- expectQExpression() helper functions
+func expectQExpression(name: String, value: Value) -> [Value] {
+  if case .QExpression(let qvalues) = value {
+    return qvalues
+  } else {
+    return [.Error(message: "Function '\(name)' expects Q-Expression, got \(value)")]
+  }
+}
+
+- Make Environment an (immutable) value type too
+
+- Parser (hand-rolled) (see my other Swift LISP)
+		lval* lval_read_num(mpc_ast_t* t) {
+		lval* lval_read(mpc_ast_t* t) {
+		main parsing loop
+
+- implement add, subtract etc using currying of builtinOperator
+  - for -, we have to do some extra logic to see if it's a negative number
+  - in fact, don't pass in the operator as a string but as an actual closure

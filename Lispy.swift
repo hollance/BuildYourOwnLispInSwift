@@ -1,4 +1,4 @@
-import Cocoa
+import Foundation
 
 /*
   A conversion of www.buildyourownlisp.com into Swift.
@@ -54,6 +54,40 @@ extension Value: CustomStringConvertible {
     case SExpression: return "S-Expression"
     case QExpression: return "Q-Expression"
     }
+  }
+}
+
+// Allows you to write 123 instead of Value.Number(123).
+extension Value: IntegerLiteralConvertible {
+  typealias IntegerLiteralType = Int
+  init(integerLiteral value: IntegerLiteralType) {
+    self = .Number(value: value)
+  }
+}
+
+// Allows you to write "A" instead of Value.Symbol("A").
+extension Value: StringLiteralConvertible {
+  typealias StringLiteralType = String
+  init(stringLiteral value: StringLiteralType) {
+    self = .Symbol(name: value)
+  }
+
+  typealias ExtendedGraphemeClusterLiteralType = StringLiteralType
+  init(extendedGraphemeClusterLiteral value: ExtendedGraphemeClusterLiteralType) {
+    self = .Symbol(name: value)
+  }
+
+  typealias UnicodeScalarLiteralType = StringLiteralType
+  init(unicodeScalarLiteral value: UnicodeScalarLiteralType) {
+    self = .Symbol(name: value)
+  }
+}
+
+// Turns an array of values into a Q-Expression.
+extension Value: ArrayLiteralConvertible {
+  typealias Element = Value
+  init(arrayLiteral elements: Element...) {
+    self = .QExpression(values: elements)
   }
 }
 
@@ -406,8 +440,15 @@ addBuiltins(e)
 //print(eval(e, Value.SExpression(values: [.Symbol(name: "cons"), q2, q2])))
 //print(eval(e, Value.SExpression(values: [.Symbol(name: "init"), q2])))
 
-let v3 = Value.Number(value: -456)
+let v3: Value = -456
 print(v3.eval(e))
 
-let q1 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y"), .Symbol(name: "z")])
+let q1 = Value.QExpression(values: ["x", .Symbol(name: "y"), .Symbol(name: "z")])
 print(q1.eval(e))
+
+let s1 = Value.SExpression(values: ["head", ["X", "Y", "Z"]])
+print(s1.eval(e))
+
+let q2: Value = ["X", "Y", "Z"]
+print(q2.eval(e))
+
