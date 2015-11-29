@@ -108,7 +108,7 @@ class Environment {
     dictionary[name] = value
   }
 
-  func addBuiltinFunction(name name: String, code: Builtin) {
+  func addBuiltinFunction(name: String, _ code: Builtin) {
     put(name: name, value: .Function(name: name, code: code))
   }
 }
@@ -182,7 +182,7 @@ extension Value {
   }
 }
 
-// MARK: - Built-in functions
+// MARK: - Q-Expression functions
 
 // Takes a Q-Expression and evaluates it as if it were a S-Expression.
 let builtin_eval: Builtin = { env, values in
@@ -279,47 +279,59 @@ let builtin_cons: Builtin = { env, values in
   return .QExpression(values: [values[0]] + qvalues)
 }
 
-func builtinOperator(env: Environment, _ values: [Value], _ op: String) -> Value {
-  // For convenience, put all the numbers into this array.
-  var numbers = [Int]()
+// MARK: - Mathematical functions
 
-  // Ensure all arguments are numbers.
-  for v in values {
-    if case .Number(let number) = v {
-      numbers.append(number)
-    } else {
-      return .Error(message: "Expected number, got \(v)")
-    }
+typealias Operator = (Value, Value) -> Value
+
+func curry(op: (Int, Int) -> Int)(_ lhs: Value, _ rhs: Value) -> Value {
+  guard case .Number(let x) = lhs else {
+    return .Error(message: "Expected number, got \(lhs)")
   }
-
-  // Get the first number.
-  var x = numbers.removeFirst()
-
-  // If no arguments and subtraction, then perform unary negation.
-  if op == "-" && numbers.isEmpty {
-    return .Number(value: -x)
+  guard case .Number(let y) = rhs else {
+    return .Error(message: "Expected number, got \(rhs)")
   }
-
-  while !numbers.isEmpty {
-    let y = numbers.removeFirst()
-
-    if op == "+" { x += y }
-    if op == "-" { x -= y }
-    if op == "*" { x *= y }
-    if op == "/" {
-      if y == 0 {
-        return .Error(message: "Division by zero")
-      }
-      x /= y
-    }
-  }
-  return .Number(value: x)
+  return .Number(value: op(x, y))
 }
 
-let builtin_add = { env, values in builtinOperator(env, values, "+") }
-let builtin_subtract = { env, values in builtinOperator(env, values, "-") }
-let builtin_multiply = { env, values in builtinOperator(env, values, "*") }
-let builtin_divide = { env, values in builtinOperator(env, values, "/") }
+func performOnList(env: Environment, var _ values: [Value], _ op: Operator) -> Value {
+  var x = values[0]
+  for var i = 1; i < values.count; ++i {
+    x = op(x, values[i])
+    if case .Error = x { return x }
+  }
+  return x
+}
+
+let builtin_add: Builtin = { env, values in
+  performOnList(env, values, curry(+))
+}
+
+let builtin_subtract: Builtin = { env, values in
+  if values.count == 1 {
+    if case .Number(let x) = values[0] {  // perform unary negation
+      return .Number(value: -x)
+    } else {
+      return .Error(message: "Expected number, got \(values[0])")
+    }
+  }
+  return performOnList(env, values, curry(-))
+}
+
+let builtin_multiply: Builtin = { env, values in
+  performOnList(env, values, curry(*))
+}
+
+let builtin_divide: Builtin = { env, values in
+  performOnList(env, values) { lhs, rhs in
+    if case .Number(let y) = rhs where y == 0 {
+      return .Error(message: "Division by zero")
+    } else {
+      return curry(/)(lhs, rhs)
+    }
+  }
+}
+
+// MARK: - Functions for variables
 
 // Associates a new value with a symbol. This adds it to the environment.
 // Takes a Q-Expression and one or more values.
@@ -360,95 +372,53 @@ let builtin_printenv: Builtin = { env, values in
   return Value.empty()
 }
 
-func addBuiltins(env: Environment) {
-  // List functions
-  env.addBuiltinFunction(name: "eval", code: builtin_eval)
-  env.addBuiltinFunction(name: "list", code: builtin_list)
-  env.addBuiltinFunction(name: "head", code: builtin_head)
-  env.addBuiltinFunction(name: "tail", code: builtin_tail)
-  env.addBuiltinFunction(name: "init", code: builtin_init)
-  env.addBuiltinFunction(name: "join", code: builtin_join)
-  env.addBuiltinFunction(name: "len", code: builtin_len)
-  env.addBuiltinFunction(name: "cons", code: builtin_cons)
+// MARK: - Initialization
 
-  // Mathematical functions
-  env.addBuiltinFunction(name: "+", code: builtin_add)
-  env.addBuiltinFunction(name: "-", code: builtin_subtract)
-  env.addBuiltinFunction(name: "*", code: builtin_multiply)
-  env.addBuiltinFunction(name: "/", code: builtin_divide)
+extension Environment {
+  func addBuiltinFunctions() {
+    // List functions
+    addBuiltinFunction("eval", builtin_eval)
+    addBuiltinFunction("list", builtin_list)
+    addBuiltinFunction("head", builtin_head)
+    addBuiltinFunction("tail", builtin_tail)
+    addBuiltinFunction("init", builtin_init)
+    addBuiltinFunction("join", builtin_join)
+    addBuiltinFunction("len", builtin_len)
+    addBuiltinFunction("cons", builtin_cons)
 
-  // Variable functions
-  env.addBuiltinFunction(name: "def", code: builtin_def)
-  env.addBuiltinFunction(name: "printenv", code: builtin_printenv)
+    // Mathematical functions
+    addBuiltinFunction("+", builtin_add)
+    addBuiltinFunction("-", builtin_subtract)
+    addBuiltinFunction("*", builtin_multiply)
+    addBuiltinFunction("/", builtin_divide)
+
+    // Variable functions
+    addBuiltinFunction("def", builtin_def)
+    addBuiltinFunction("printenv", builtin_printenv)
+  }
 }
+
+let e = Environment()
+e.addBuiltinFunctions()
 
 // MARK: - Demo
 
-let e = Environment()
-addBuiltins(e)
+let d3 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y")])
+let d2 = Value.Symbol(name: "def")
+let d1 = Value.SExpression(values: [d2, d3, .Number(value: 10), .Number(value: 456)])
+print("> \(d1)")
+print(d1.eval(e))
 
-//let v1 = Value.Error(message: "Foutje")
-//let v3 = Value.Number(value: -456)
-//let v4 = Value.Function(name: "lol", code: { _ in return Value.empty() })
-//let v5 = Value.Symbol(name: "x")
-//let v6 = Value.Symbol(name: "+")
-//let v7 = Value.QExpression(values: [.Symbol(name: "yay")])
-//let v2 = Value.SExpression(values: [v6, v3, v5])
-//
-//// fake a "def"
-////e.put(name: "something", value: .Number(value: 2048))
-//
-//// ( def { x y } 123 456 )
-//let d3 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y")])
-//let d2 = Value.Symbol(name: "def")
-//let d1 = Value.SExpression(values: [d2, d3, .Number(value: 123), .Number(value: 456)])
-//
-//let d5 = Value.SExpression(values: [v6, .Number(value: 123), .Number(value: 456)])
-//let d0 = Value.SExpression(values: [d2, d3, d5, .Number(value: 789)])
-//
-//print("> \(d0)")
-//print(eval(e, d0))
-//print(eval(e, v5))
-//print("> \(d1)")
-//print(eval(e, d1))
-//print(eval(e, v5))
-//print("> \(v2)")
-//print(eval(e, v2))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "printenv"), .Number(value: 1)])))
-//
-//let q1 = Value.QExpression(values: [.Symbol(name: "x"), .Symbol(name: "y"), .Symbol(name: "z")])
-//
-//print(eval(e, q1))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), q1])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), .QExpression(values: [])])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "head"), .QExpression(values: [.Number(value: 100)])])))
-//
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "list"), .Symbol(name: "x"), .Number(value: 200), q1])))
-//
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), q1])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), .QExpression(values: [])])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "tail"), .QExpression(values: [.Number(value: 100)])])))
-//
-//let q2 = Value.QExpression(values: [.Symbol(name: "list"), .Number(value: 1), .Number(value: 2)])
-//print(eval(e, q2))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "eval"), q2])))
-//
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "join"), q2, q2])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "len"), q2])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "len"), .QExpression(values: [])])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "cons"), .Number(value: 3), q2])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "cons"), q2, q2])))
-//print(eval(e, Value.SExpression(values: [.Symbol(name: "init"), q2])))
+let v3 = Value.Number(value: -456)
+let v5 = Value.Symbol(name: "x")
+let v6 = Value.Symbol(name: "+")
+let v2 = Value.SExpression(values: ["/", v3, v5])
 
-let v3: Value = -456
-print(v3.eval(e))
+print("> \(v2)")
+print(v2.eval(e))
 
-let q1 = Value.QExpression(values: ["x", .Symbol(name: "y"), .Symbol(name: "z")])
-print(q1.eval(e))
+let v7 = Value.SExpression(values: ["-", 123])
 
-let s1 = Value.SExpression(values: ["head", ["X", "Y", "Z"]])
-print(s1.eval(e))
-
-let q2: Value = ["X", "Y", "Z"]
-print(q2.eval(e))
+print("> \(v7)")
+print(v7.eval(e))
 
