@@ -306,7 +306,7 @@ let builtin_head: Builtin = { _, values in
   if qvalues.count == 0 {
     return .Error(message: "Function 'head' expected non-empty Q-Expression, got {}")
   }
-  return qvalues[0]
+  return .QExpression(values: [qvalues[0]])
 }
 
 // Takes a Q-Expression and returns a new Q-Expression with the first value removed.
@@ -594,10 +594,31 @@ extension Environment {
     addBuiltinFunction("\\", builtin_lambda)
     addBuiltinFunction("printenv", builtin_printenv)
   }
+
+  func addUsefulFunctions() {
+    let xs = [
+      // Allows you to write: fun {add-together x y} {+ x y}
+      "def {fun} (\\ {args body} {def (head args) (\\ (tail args) body)})",
+
+      "fun {unpack f xs} {eval (join (list f) xs)}",
+      "def {curry} unpack",
+
+      "fun {pack f & xs} {f xs}",
+      "def {uncurry} pack",
+    ]
+
+    for x in xs {
+      let v = parse(x)
+      if case .Error(let message) = v.eval(self) {
+        print("Error: \(message)")
+      }
+    }
+  }
 }
 
 let e = Environment()
 e.addBuiltinFunctions()
+e.addUsefulFunctions()
 
 // MARK: - REPL
 
@@ -609,7 +630,7 @@ func readInput() -> String {
 }
 
 print("Lispy Version 0.12")
-print("Press Ctrl+c to Exit")
+print("Press Ctrl+C to Exit")
 
 while true {
   print("lispy> ", terminator: "")
