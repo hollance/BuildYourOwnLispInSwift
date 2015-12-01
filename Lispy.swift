@@ -12,9 +12,14 @@ enum Value {
   case Error(message: String)
   case Number(value: Int)
   case Symbol(name: String)
-  case Function(name: String, code: Builtin)
   case SExpression(values: [Value])
   case QExpression(values: [Value])
+  case BuiltinFunction(name: String, code: Builtin)
+
+  // The formal parameters are an array of Symbols. The body is a Q-Expression.
+  // The environment is needed for partial function application, because it has
+  // the values of the parameters that have been used already.
+  indirect case Lambda(env: Environment, formals: [Value], body: Value)
 }
 
 extension Value {
@@ -32,8 +37,10 @@ extension Value: CustomStringConvertible {
       return "\(value)"
     case Symbol(let name):
       return name
-    case Function(let name, _):
+    case BuiltinFunction(let name, _):
       return "<\(name)>"
+    case Lambda(_, let formals, let body):
+      return "(\\ {\(listToString(formals))} \(body))"
     case SExpression(let values):
       return "(" + listToString(values) + ")"
     case QExpression(let values):
@@ -50,7 +57,8 @@ extension Value: CustomStringConvertible {
     case .Error: return "Error"
     case Number: return "Number"
     case Symbol: return "Symbol"
-    case Function: return "Function"
+    case BuiltinFunction: return "Built-in Function"
+    case Lambda: return "Lambda"
     case SExpression: return "S-Expression"
     case QExpression: return "Q-Expression"
     }
@@ -96,9 +104,22 @@ extension Value: ArrayLiteralConvertible {
 class Environment {
   private(set) var dictionary = [String: Value]()
 
+  var parent: Environment?
+
+  // Making a copy is necessary for partial function application
+  // (because Environment is a reference type, not a value type).
+  func copy() -> Environment {
+    let e = Environment()
+    e.dictionary = dictionary
+    e.parent = parent
+    return e
+  }
+
   func get(name: String) -> Value {
     if let v = dictionary[name] {
       return v
+    } else if let parent = parent {
+      return parent.get(name)
     } else {
       return .Error(message: "Unbound symbol '\(name)'")
     }
@@ -108,27 +129,45 @@ class Environment {
     dictionary[name] = value
   }
 
+  func globalEnvironment() -> Environment {
+    var env = self
+    while case let parent? = env.parent {
+      env = parent
+    }
+    return env
+  }
+
   func addBuiltinFunction(name: String, _ code: Builtin) {
-    put(name: name, value: .Function(name: name, code: code))
+    put(name: name, value: .BuiltinFunction(name: name, code: code))
   }
 }
 
 extension Environment: CustomStringConvertible {
   var description: String {
     var s = ""
+    if parent == nil {
+      s += "---Environment (global)---\n"
+    } else {
+      s += "---Environment (local)---\n"
+    }
     for name in dictionary.keys.sort(<) {
       let value = dictionary[name]!
-      if case .Function = value {
+      if case .BuiltinFunction = value {
         s += "\(name) \(value.typeName)\n"
       } else {
         s += "\(name) \(value.typeName) \(value)\n"
       }
     }
-    return s
+    return s + "--------------------------"
   }
 }
 
 // MARK: - Evaluating
+
+// Takes one or more values and returns a new Q-Expression containing those values.
+let builtin_list: Builtin = { _, values in
+  return .QExpression(values: values)
+}
 
 extension Value {
   func eval(env: Environment) -> Value {
@@ -150,16 +189,12 @@ extension Value {
   }
 
   private func evalList(env: Environment, var _ values: [Value]) -> Value {
-    //print("BEFORE \(values)")
-
-    // Evaluate children. If any of them are symbols, they will be converted into
-    // the associated value from the environment, such as a function, a number, or
-    // a Q-Expression.
+    // Evaluate children. If any of them are symbols, they will be converted 
+    // into the associated value from the environment, such as a function, a 
+    // number, or a Q-Expression.
     for var i = 0; i < values.count; ++i {
       values[i] = values[i].eval(env)
     }
-
-    //print("AFTER \(values)")
 
     // If any children are errors, return the first error we encounter.
     for value in values {
@@ -175,10 +210,75 @@ extension Value {
     // Ensure first value is a function after evaluation, then call it on the
     // remaining values.
     let first = values.removeFirst()
-    if case .Function(_, let code) = first {
+    switch first {
+    case .BuiltinFunction(_, let code):
       return code(env: env, values: values)
+    case .Lambda(let localEnv, let formals, let body):
+      return evalLambda(env, localEnv, formals, values, body)
+    default:
+      return .Error(message: "Expected function, got \(first)")
     }
-    return .Error(message: "Expected function, got \(first)")
+  }
+
+  private func evalLambda(parentEnv: Environment, _ localEnv: Environment, var _ formals: [Value], var _ args: [Value], _ body: Value) -> Value {
+    let given = args.count
+    let expected = formals.count
+
+    // While arguments still remain to be processed...
+    while args.count > 0 {
+      // Have we ran out of formal arguments to bind?
+      if formals.count == 0 {
+        return .Error(message: "Expected \(expected) arguments, got \(given)")
+      }
+
+      // Look at the next symbol from the formals.
+      let sym = formals.removeFirst()
+      if case .Symbol(let name) = sym {
+
+        // Special case to deal with '&' for variable-argument lists
+        if name == "&" {
+          // Ensure '&' is followed by another symbol.
+          if formals.count != 1 {
+            return .Error(message: "Expected a single following '&'")
+          }
+
+          // The next formal should be bound to remaining arguments.
+          let nextSym = formals.removeFirst()
+          if case .Symbol(let name) = nextSym {
+            localEnv.put(name: name, value: .QExpression(values: args))
+          }
+          break
+        }
+
+        // Bind the next arg to this name in the function's local environment.
+        localEnv.put(name: name, value: args.removeFirst())
+      }
+    }
+
+    // If a '&' remains in formal list, bind it to an empty Q-Expression.
+    if formals.count > 0, case .Symbol(let name) = formals[0] where name == "&" {
+      if formals.count != 2 {
+        return .Error(message: "Expected a single symbol following '&'")
+      }
+
+      // Delete '&' symbol.
+      formals.removeFirst()
+
+      // Associate the next (and final) symbol with an empty list.
+      let sym = formals.removeFirst()
+      if case .Symbol(let name) = sym {
+        localEnv.put(name: name, value: .QExpression(values: []))
+      }
+    }
+
+    // If all formals have been bound, evaluate the function body.
+    if formals.count == 0 {
+      localEnv.parent = parentEnv
+      return builtin_eval(env: localEnv, values: [body])
+    } else {
+      // Otherwise return partially evaluated function.
+      return .Lambda(env: localEnv.copy(), formals: formals, body: body)
+    }
   }
 }
 
@@ -187,29 +287,24 @@ extension Value {
 // Takes a Q-Expression and evaluates it as if it were a S-Expression.
 let builtin_eval: Builtin = { env, values in
   if values.count != 1 {
-    return .Error(message: "Function 'eval' expects 1 argument, got \(values.count)")
+    return .Error(message: "Function 'eval' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(let qvalues) = values[0] else {
-    return .Error(message: "Function 'eval' expects Q-Expression, got \(values[0])")
+    return .Error(message: "Function 'eval' expected Q-Expression, got \(values[0])")
   }
   return Value.SExpression(values: qvalues).eval(env)
-}
-
-// Takes one or more values and returns a new Q-Expression containing those values.
-let builtin_list: Builtin = { _, values in
-  return .QExpression(values: values)
 }
 
 // Takes a Q-Expression and returns a new Q-Expression with only the first value.
 let builtin_head: Builtin = { _, values in
   if values.count != 1 {
-    return .Error(message: "Function 'head' expects 1 argument, got \(values.count)")
+    return .Error(message: "Function 'head' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(let qvalues) = values[0] else {
-    return .Error(message: "Function 'head' expects Q-Expression, got \(values[0])")
+    return .Error(message: "Function 'head' expected Q-Expression, got \(values[0])")
   }
   if qvalues.count == 0 {
-    return .Error(message: "Function 'head' expects non-empty Q-Expression, got {}")
+    return .Error(message: "Function 'head' expected non-empty Q-Expression, got {}")
   }
   return qvalues[0]
 }
@@ -217,13 +312,13 @@ let builtin_head: Builtin = { _, values in
 // Takes a Q-Expression and returns a new Q-Expression with the first value removed.
 let builtin_tail: Builtin = { env, values in
   if values.count != 1 {
-    return .Error(message: "Function 'tail' expects 1 argument, got \(values.count)")
+    return .Error(message: "Function 'tail' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(var qvalues) = values[0] else {
-    return .Error(message: "Function 'tail' expects Q-Expression, got \(values[0])")
+    return .Error(message: "Function 'tail' expected Q-Expression, got \(values[0])")
   }
   if qvalues.count == 0 {
-    return .Error(message: "Function 'tail' expects non-empty Q-Expression, got {}")
+    return .Error(message: "Function 'tail' expected non-empty Q-Expression, got {}")
   }
   qvalues.removeFirst()
   return .QExpression(values: qvalues)
@@ -232,13 +327,13 @@ let builtin_tail: Builtin = { env, values in
 // Returns all of a Q-Expression except the final value.
 let builtin_init: Builtin = { env, values in
   if values.count != 1 {
-    return .Error(message: "Function 'init' expects 1 argument, got \(values.count)")
+    return .Error(message: "Function 'init' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(var qvalues) = values[0] else {
-    return .Error(message: "Function 'init' expects Q-Expression, got \(values[0])")
+    return .Error(message: "Function 'init' expected Q-Expression, got \(values[0])")
   }
   if qvalues.count == 0 {
-    return .Error(message: "Function 'init' expects non-empty Q-Expression, got {}")
+    return .Error(message: "Function 'init' expected non-empty Q-Expression, got {}")
   }
   qvalues.removeLast()
   return .QExpression(values: qvalues)
@@ -251,7 +346,7 @@ let builtin_join: Builtin = { env, values in
     if case .QExpression(let qvalues) = value {
       allValues += qvalues
     } else {
-      return .Error(message: "Function 'join' expects Q-Expression, got \(value)")
+      return .Error(message: "Function 'join' expected Q-Expression, got \(value)")
     }
   }
   return .QExpression(values: allValues)
@@ -260,10 +355,10 @@ let builtin_join: Builtin = { env, values in
 // Returns the number of value in a Q-Expression.
 let builtin_len: Builtin = { env, values in
   if values.count != 1 {
-    return .Error(message: "Function 'len' expects 1 argument, got \(values.count)")
+    return .Error(message: "Function 'len' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(let qvalues) = values[0] else {
-    return .Error(message: "Function 'len' expects Q-Expression, got \(values[0])")
+    return .Error(message: "Function 'len' expected Q-Expression, got \(values[0])")
   }
   return .Number(value: qvalues.count)
 }
@@ -271,10 +366,10 @@ let builtin_len: Builtin = { env, values in
 // Takes a value and a Q-Expression and appends the value to the front of the list.
 let builtin_cons: Builtin = { env, values in
   if values.count != 2 {
-    return .Error(message: "Function 'cons' expects 2 arguments, got \(values.count)")
+    return .Error(message: "Function 'cons' expected 2 arguments, got \(values.count)")
   }
   guard case .QExpression(let qvalues) = values[1] else {
-    return .Error(message: "Function 'cons' expects Q-Expression, got \(values[1])")
+    return .Error(message: "Function 'cons' expected Q-Expression, got \(values[1])")
   }
   return .QExpression(values: [values[0]] + qvalues)
 }
@@ -331,11 +426,11 @@ let builtin_divide: Builtin = { env, values in
   }
 }
 
-// MARK: - Functions for variables
+// MARK: - Functions for variables and lambdas
 
 // Associates a new value with a symbol. This adds it to the environment.
 // Takes a Q-Expression and one or more values.
-let builtin_def: Builtin = { env, values in
+func bindVariable(env: Environment, _ values: [Value]) -> Value {
   guard case .QExpression(let qvalues) = values[0] else {
     return .Error(message: "Expected Q-Expression, got \(values[0])")
   }
@@ -364,12 +459,39 @@ let builtin_def: Builtin = { env, values in
   return Value.empty()
 }
 
+let builtin_def: Builtin = { env, values in
+  return bindVariable(env.globalEnvironment(), values)
+}
+
+let builtin_put: Builtin = { env, values in
+  return bindVariable(env, values)
+}
+
 // Prints out the contents of the environment.
 let builtin_printenv: Builtin = { env, values in
-  print("---Environment---")
-  print(env.description, terminator: "")
-  print("-----------------")
+  print(env)
   return Value.empty()
+}
+
+let builtin_lambda: Builtin = { env, values in
+  if values.count != 2 {
+    return .Error(message: "Function '\\' expected 2 arguments, got \(values.count)")
+  }
+  guard case .QExpression(var qvalues) = values[0] else {
+    return .Error(message: "Function '\\' expected Q-Expression, got \(values[0])")
+  }
+  guard case .QExpression = values[1] else {
+    return .Error(message: "Function '\\' expected Q-Expression, got \(values[1])")
+  }
+
+  // Check that the first Q-Expression contains only symbols.
+  for value in qvalues {
+    guard case .Symbol(let name) = value else {
+      return .Error(message: "Expected symbol, got \(value)")
+    }
+  }
+
+  return .Lambda(env: Environment(), formals: qvalues, body: values[1])
 }
 
 // MARK: - Parser
@@ -466,8 +588,10 @@ extension Environment {
     addBuiltinFunction("*", builtin_multiply)
     addBuiltinFunction("/", builtin_divide)
 
-    // Variable functions
+    // Variable and lambda functions
     addBuiltinFunction("def", builtin_def)
+    addBuiltinFunction("=", builtin_put)
+    addBuiltinFunction("\\", builtin_lambda)
     addBuiltinFunction("printenv", builtin_printenv)
   }
 }
@@ -484,7 +608,7 @@ func readInput() -> String {
   return string.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
 }
 
-print("Lispy Version 0.11")
+print("Lispy Version 0.12")
 print("Press Ctrl+c to Exit")
 
 while true {
