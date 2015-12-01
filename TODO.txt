@@ -13,3 +13,12 @@ func expectQExpression(name: String, value: Value) -> [Value] {
     return [.Error(message: "Function '\(name)' expects Q-Expression, got \(value)")]
   }
 }
+
+-	We alloc the new Environment for a lambda when we parse it. That seems an
+	error. It would be more correct to create the Environment when we evaluate
+	the lambda. Especially when doing recursion.
+	-	However, passing an Environment around is necessary for partial
+		application, because we need to know the values for some of its
+		parameters. (The C version copies the environment when it returns
+		the partially evaluated lambda.)
+	-	Is this explained / dealt with in ch.13 - 16?

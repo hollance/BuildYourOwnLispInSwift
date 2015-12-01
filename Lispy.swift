@@ -39,8 +39,16 @@ extension Value: CustomStringConvertible {
       return name
     case BuiltinFunction(let name, _):
       return "<\(name)>"
-    case Lambda(_, let formals, let body):
-      return "(\\ {\(listToString(formals))} \(body))"
+    case Lambda(let env, let formals, let body):
+      var s = "(\\ {\(listToString(formals))} \(body))"
+      if !env.dictionary.isEmpty {
+        s += " ["
+        for (k, v) in env.dictionary {
+          s += " \(k)=\(v)"
+        }
+        s += " ]"
+      }
+      return s
     case SExpression(let values):
       return "(" + listToString(values) + ")"
     case QExpression(let values):
