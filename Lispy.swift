@@ -16,10 +16,10 @@ enum Value {
   case QExpression(values: [Value])
   case BuiltinFunction(name: String, code: Builtin)
 
-  // The formal parameters are an array of Symbols. The body is a Q-Expression.
+  // The formal parameters are an array of symbols. The body is a Q-Expression.
   // The environment is needed for partial function application, because it has
   // the values of the parameters that have been used already.
-  indirect case Lambda(env: Environment, formals: [Value], body: Value)
+  indirect case Lambda(env: Environment, formals: [String], body: Value)
 }
 
 extension Value {
@@ -50,6 +50,10 @@ extension Value: CustomStringConvertible {
 
   private func listToString(values: [Value]) -> String {
     return values.map({ $0.description }).joinWithSeparator(" ")
+  }
+
+  private func listToString(values: [String]) -> String {
+    return values.joinWithSeparator(" ")
   }
 
   var typeName: String {
@@ -220,7 +224,7 @@ extension Value {
     }
   }
 
-  private func evalLambda(parentEnv: Environment, _ localEnv: Environment, var _ formals: [Value], var _ args: [Value], _ body: Value) -> Value {
+  private func evalLambda(parentEnv: Environment, _ localEnv: Environment, var _ formals: [String], var _ args: [Value], _ body: Value) -> Value {
     let given = args.count
     let expected = formals.count
 
@@ -233,30 +237,26 @@ extension Value {
 
       // Look at the next symbol from the formals.
       let sym = formals.removeFirst()
-      if case .Symbol(let name) = sym {
 
-        // Special case to deal with '&' for variable-argument lists
-        if name == "&" {
-          // Ensure '&' is followed by another symbol.
-          if formals.count != 1 {
-            return .Error(message: "Expected a single following '&'")
-          }
-
-          // The next formal should be bound to remaining arguments.
-          let nextSym = formals.removeFirst()
-          if case .Symbol(let name) = nextSym {
-            localEnv.put(name: name, value: .QExpression(values: args))
-          }
-          break
+      // Special case to deal with '&' for variable-argument lists
+      if sym == "&" {
+        // Ensure '&' is followed by another symbol.
+        if formals.count != 1 {
+          return .Error(message: "Expected a single following '&'")
         }
 
-        // Bind the next arg to this name in the function's local environment.
-        localEnv.put(name: name, value: args.removeFirst())
+        // The next formal should be bound to remaining arguments.
+        let nextSym = formals.removeFirst()
+        localEnv.put(name: nextSym, value: .QExpression(values: args))
+        break
       }
+
+      // Bind the next arg to this name in the function's local environment.
+      localEnv.put(name: sym, value: args.removeFirst())
     }
 
     // If a '&' remains in formal list, bind it to an empty Q-Expression.
-    if formals.count > 0, case .Symbol(let name) = formals[0] where name == "&" {
+    if formals.count > 0 && formals[0] == "&" {
       if formals.count != 2 {
         return .Error(message: "Expected a single symbol following '&'")
       }
@@ -266,9 +266,7 @@ extension Value {
 
       // Associate the next (and final) symbol with an empty list.
       let sym = formals.removeFirst()
-      if case .Symbol(let name) = sym {
-        localEnv.put(name: name, value: .QExpression(values: []))
-      }
+      localEnv.put(name: sym, value: .QExpression(values: []))
     }
 
     // If all formals have been bound, evaluate the function body.
@@ -484,14 +482,18 @@ let builtin_lambda: Builtin = { env, values in
     return .Error(message: "Function '\\' expected Q-Expression, got \(values[1])")
   }
 
+  var symbols = [String]()
+
   // Check that the first Q-Expression contains only symbols.
   for value in qvalues {
-    guard case .Symbol(let name) = value else {
+    if case .Symbol(let name) = value {
+      symbols.append(name)
+    } else {
       return .Error(message: "Expected symbol, got \(value)")
     }
   }
 
-  return .Lambda(env: Environment(), formals: qvalues, body: values[1])
+  return .Lambda(env: Environment(), formals: symbols, body: values[1])
 }
 
 // MARK: - Parser
