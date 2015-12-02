@@ -382,17 +382,6 @@ let builtin_join: Builtin = { env, values in
   return .QExpression(values: allValues)
 }
 
-// Returns the number of value in a Q-Expression.
-let builtin_len: Builtin = { env, values in
-  if values.count != 1 {
-    return .Error(message: "Function 'len' expected 1 argument, got \(values.count)")
-  }
-  guard case .QExpression(let qvalues) = values[0] else {
-    return .Error(message: "Function 'len' expected Q-Expression, got \(values[0])")
-  }
-  return .Number(value: qvalues.count)
-}
-
 // Takes a value and a Q-Expression and appends the value to the front of the list.
 let builtin_cons: Builtin = { env, values in
   if values.count != 2 {
@@ -684,7 +673,6 @@ extension Environment {
     addBuiltinFunction("tail", builtin_tail)
     addBuiltinFunction("init", builtin_init)
     addBuiltinFunction("join", builtin_join)
-    addBuiltinFunction("len", builtin_len)
     addBuiltinFunction("cons", builtin_cons)
 
     // Mathematical functions
