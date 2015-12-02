@@ -745,18 +745,35 @@ func readInput() -> String {
   return string.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
 }
 
-print("Lispy Version 0.12")
+print("Lispy Version 0.13")
 print("Press Ctrl+C to Exit")
+
+var lines = ""
 
 while true {
   print("lispy> ", terminator: "")
   fflush(__stdoutp)
 
   let input = readInput()
-  let v = parse(input)
+
+  // Does the line end with a semicolon? Then keep listening for more input.
+  if !input.isEmpty {
+    let lastIndex = input.endIndex.predecessor()
+    if input[lastIndex] == ";" {
+      let s = input[input.startIndex ..< lastIndex]
+      lines += "\(s)\n"
+      continue
+    }
+  }
+
+  lines += input
+
+  let v = parse(lines)
   if case .Error(let message) = v {
     print("Error: \(message)")
   } else {
     print(v.eval(e))
   }
+
+  lines = ""
 }
