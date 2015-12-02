@@ -250,7 +250,7 @@ extension Value {
     case .BuiltinFunction(_, let code):
       return code(env: env, values: values)
     case .Lambda(let localEnv, let formals, let body):
-      return evalLambda(env, localEnv, formals, values, body)
+      return evalLambda(env, localEnv.copy(), formals, values, body)
     default:
       return .Error(message: "Expected function, got \(first)")
     }
@@ -307,7 +307,7 @@ extension Value {
       return builtin_eval(env: localEnv, values: [body])
     } else {
       // Otherwise return partially evaluated function.
-      return .Lambda(env: localEnv.copy(), formals: formals, body: body)
+      return .Lambda(env: localEnv, formals: formals, body: body)
     }
   }
 }
@@ -719,6 +719,20 @@ extension Environment {
 
       "fun {pack f & xs} {f xs}",
       "def {uncurry} pack",
+
+      // Reverses the elements from a list.
+      "fun {reverse l} {" +
+      "  if (== l {})" +
+      "    {{}}" +
+      "    {join (reverse (tail l)) (head l)}" +
+      "}",
+
+      // Determines the number of items in a list.
+      "fun {len l} {" +
+      "  if (== l {})" +
+      "    {0}" +
+      "    {+ 1 (len (tail l))}" +
+      "}",
     ]
 
     for x in xs {
