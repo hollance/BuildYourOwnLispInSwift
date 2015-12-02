@@ -4,6 +4,48 @@ import Foundation
   A conversion of www.buildyourownlisp.com into Swift.
 */
 
+// MARK: - String extensions
+
+extension String {
+  // Adds escape codes for unprintable characters. (This is really just a
+  // placeholder for a more complete implementation.)
+  func escaped() -> String {
+    var out = ""
+    for c in self.characters {
+      switch c {
+      case "\n": out += "\\n"
+      case "\t": out += "\\t"
+      case "\\": out += "\\\\"
+      default:   out += "\(c)"
+      }
+    }
+    return out
+  }
+
+  // Turns "\n" "\t" and so on into actual characters. (This is really just a
+  // placeholder for a more complete implementation.)
+  func unescaped() -> String {
+    var out = ""
+    var i = startIndex
+    while i < endIndex {
+      let c = self[i]
+      i = i.successor()
+      if c == "\\" && i < endIndex {
+        switch self[i] {
+        case "n":  out += "\n"
+        case "t":  out += "\t"
+        case "\\": out += "\\"
+        default:   out += "\(self[i])"
+        }
+        i = i.successor()
+      } else {
+        out += "\(c)"
+      }
+    }
+    return out
+  }
+}
+
 // MARK: - Values
 
 typealias Builtin = (env: Environment, values: [Value]) -> Value
@@ -11,6 +53,7 @@ typealias Builtin = (env: Environment, values: [Value]) -> Value
 enum Value {
   case Error(message: String)
   case Number(value: Int)
+  case Text(value: String)
   case Symbol(name: String)
   case SExpression(values: [Value])
   case QExpression(values: [Value])
@@ -37,6 +80,8 @@ func ==(lhs: Value, rhs: Value) -> Bool {
     return message1 == message2
   case (.Number(let value1), .Number(let value2)):
     return value1 == value2
+  case (.Text(let value1), .Text(let value2)):
+    return value1 == value2
   case (.Symbol(let name1), .Symbol(let name2)):
     return name1 == name2
   case (.BuiltinFunction(let name1, _), .BuiltinFunction(let name2, _)):
@@ -59,6 +104,8 @@ extension Value: CustomStringConvertible {
       return "Error: \(message)"
     case Number(let value):
       return "\(value)"
+    case Text(let value):
+      return "\"\(value.escaped())\""
     case Symbol(let name):
       return name
     case BuiltinFunction(let name, _):
@@ -92,6 +139,7 @@ extension Value: CustomStringConvertible {
     switch self {
     case .Error: return "Error"
     case Number: return "Number"
+    case Text: return "String"
     case Symbol: return "Symbol"
     case BuiltinFunction: return "Built-in Function"
     case Lambda: return "Lambda"
@@ -603,6 +651,20 @@ let builtin_lambda: Builtin = { env, values in
   This is a simplified version of the parser used in the original tutorial.
 */
 
+private func tokenizeString(s: String, inout _ i: String.Index) -> Value {
+  var out = ""
+  while i < s.endIndex {
+    let c = s[i]
+    i = i.successor()
+    if c == "\"" {
+      return .Text(value: out.unescaped())
+    } else {
+      out += "\(c)"
+    }
+  }
+  return .Error(message: "Expected \"")
+}
+
 private func tokenizeAtom(s: String) -> Value {
   if let i = Int(s) {
     return .Number(value: i)
@@ -625,6 +687,8 @@ private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) ->
         c == "+" || c == "-" || c == "*" || c == "/" ||
         c == "=" || c == "<" || c == ">" || c == "!" || c == "&" {
       token += "\(c)"
+    } else if c == "\"" {
+      array.append(tokenizeString(s, &i))
     } else {
       if !token.isEmpty {
         array.append(tokenizeAtom(token))
@@ -797,7 +861,7 @@ func readInput() -> String {
   return string.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
 }
 
-print("Lispy Version 0.13")
+print("Lispy Version 0.14")
 print("Press Ctrl+C to Exit")
 
 var lines = ""
