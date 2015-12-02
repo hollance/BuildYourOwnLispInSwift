@@ -28,6 +28,30 @@ extension Value {
   }
 }
 
+extension Value: Equatable {
+}
+
+func ==(lhs: Value, rhs: Value) -> Bool {
+  switch (lhs, rhs) {
+  case (.Error(let message1), .Error(let message2)):
+    return message1 == message2
+  case (.Number(let value1), .Number(let value2)):
+    return value1 == value2
+  case (.Symbol(let name1), .Symbol(let name2)):
+    return name1 == name2
+  case (.BuiltinFunction(let name1, _), .BuiltinFunction(let name2, _)):
+    return name1 == name2
+  case (.Lambda(_, let formals1, let body1), .Lambda(_, let formals2, let body2)):
+    return formals1 == formals2 && body1 == body2
+  case (.SExpression(let values1), .SExpression(let values2)):
+    return values1 == values2
+  case (.QExpression(let values1), .QExpression(let values2)):
+    return values1 == values2
+  default:
+    return false
+  }
+}
+
 extension Value: CustomStringConvertible {
   var description: String {
     switch self {
@@ -432,6 +456,77 @@ let builtin_divide: Builtin = { env, values in
   }
 }
 
+// MARK: - Comparison functions
+
+func curry(op: (Int, Int) -> Bool)(_ lhs: Value, _ rhs: Value) -> Value {
+  guard case .Number(let x) = lhs else {
+    return .Error(message: "Expected number, got \(lhs)")
+  }
+  guard case .Number(let y) = rhs else {
+    return .Error(message: "Expected number, got \(rhs)")
+  }
+  return .Number(value: op(x, y) ? 1 : 0)
+}
+
+func comparison(env: Environment, var _ values: [Value], _ op: Operator) -> Value {
+  if values.count != 2 {
+    return .Error(message: "Comparison expected 2 arguments, got \(values.count)")
+  }
+  return op(values[0], values[1])
+}
+
+let builtin_gt: Builtin = { env, values in
+  return comparison(env, values, curry(>))
+}
+
+let builtin_lt: Builtin = { env, values in
+  return comparison(env, values, curry(<))
+}
+
+let builtin_ge: Builtin = { env, values in
+  return comparison(env, values, curry(>=))
+}
+
+let builtin_le: Builtin = { env, values in
+  return comparison(env, values, curry(<=))
+}
+
+let builtin_eq: Builtin = { env, values in
+  if values.count != 2 {
+    return .Error(message: "Function '==' expected 1 arguments, got \(values.count)")
+  }
+  return .Number(value: values[0] == values[1] ? 1 : 0)
+}
+
+let builtin_ne: Builtin = { env, values in
+  if values.count != 2 {
+    return .Error(message: "Function '!=' expected 2 arguments, got \(values.count)")
+  }
+  return .Number(value: values[0] != values[1] ? 1 : 0)
+}
+
+let builtin_if: Builtin = { env, values in
+  if values.count != 3 {
+    return .Error(message: "Function 'if' expected 3 arguments, got \(values.count)")
+  }
+  guard case .Number(let cond) = values[0] else {
+    return .Error(message: "Function 'if' expected number, got \(values[0])")
+  }
+  guard case .QExpression(var qvalues1) = values[1] else {
+    return .Error(message: "Function 'if' expected Q-Expression, got \(values[1])")
+  }
+  guard case .QExpression(var qvalues2) = values[2] else {
+    return .Error(message: "Function 'if' expected Q-Expression, got \(values[2])")
+  }
+
+  // If condition is true, evaluate first expression, otherwise second.
+  if cond != 0 {
+    return Value.SExpression(values: qvalues1).eval(env)
+  } else {
+    return Value.SExpression(values: qvalues2).eval(env)
+  }
+}
+
 // MARK: - Functions for variables and lambdas
 
 // Associates a new value with a symbol. This adds it to the environment.
@@ -597,6 +692,15 @@ extension Environment {
     addBuiltinFunction("-", builtin_subtract)
     addBuiltinFunction("*", builtin_multiply)
     addBuiltinFunction("/", builtin_divide)
+
+    // Comparison functions
+    addBuiltinFunction(">", builtin_gt)
+    addBuiltinFunction("<", builtin_lt)
+    addBuiltinFunction(">=", builtin_ge)
+    addBuiltinFunction("<=", builtin_le)
+    addBuiltinFunction("==", builtin_eq)
+    addBuiltinFunction("!=", builtin_ne)
+    addBuiltinFunction("if", builtin_if)
 
     // Variable and lambda functions
     addBuiltinFunction("def", builtin_def)
