@@ -659,26 +659,6 @@ let builtin_lambda: Builtin = { env, values in
   return .Lambda(env: Environment(), formals: symbols, body: values[1])
 }
 
-// MARK: - Functions for strings
-
-let builtin_print: Builtin = { env, values in
-  for value in values {
-    print(value, terminator: " ")
-  }
-  print("")
-  return Value.empty()
-}
-
-let builtin_error: Builtin = { env, values in
-  if values.count != 1 {
-    return .Error(message: "Function 'error' expected 1 argument, got \(values.count)")
-  }
-  guard case .Text(var message) = values[0] else {
-    return .Error(message: "Function 'error' expected string, got \(values[0])")
-  }
-  return .Error(message: message)
-}
-
 // MARK: - Parser
 
 /*
@@ -764,9 +744,72 @@ private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) ->
   }
 }
 
-func parse(s: String) -> Value {
+// In order to tell expressions apart from each other in the file, each must be
+// wrapped in ( ) parentheses.
+func parseFile(s: String, inout _ i: String.Index) -> Value? {
+  while i < s.endIndex {
+    let c = s[i]
+    i = i.successor()
+    if c == "(" {
+      return tokenizeList(s, &i, "(")
+    }
+  }
+  return nil
+}
+
+// On the REPL, expressions don't need to be surrounded by parentheses.
+func parseREPL(s: String) -> Value {
   var i = s.startIndex
   return tokenizeList(s, &i, "")
+}
+
+// MARK: - Functions for strings
+
+let builtin_load: Builtin = { env, values in
+  guard values.count == 1 else {
+    return .Error(message: "Function 'load' expected 1 argument, got \(values.count)")
+  }
+  guard case .Text(var filename) = values[0] else {
+    return .Error(message: "Function 'load' expected string, got \(values[0])")
+  }
+
+  do {
+    let s = try String(contentsOfFile: filename, encoding: NSUTF8StringEncoding)
+    var i = s.startIndex
+    while i < s.endIndex {
+      if let expr = parseFile(s, &i) {
+        if case .Error(let message) = expr {
+          print("Parse error: \(message)")
+        } else {
+          let result = expr.eval(env)
+          if case .Error(let message) = result {
+            print("Error: \(message)")
+          }
+        }
+      }
+    }
+    return Value.empty()
+  } catch {
+    return .Error(message: "Could not load \(filename), reason: \(error)")
+  }
+}
+
+let builtin_print: Builtin = { env, values in
+  for value in values {
+    print(value, terminator: " ")
+  }
+  print("")
+  return Value.empty()
+}
+
+let builtin_error: Builtin = { env, values in
+  if values.count != 1 {
+    return .Error(message: "Function 'error' expected 1 argument, got \(values.count)")
+  }
+  guard case .Text(var message) = values[0] else {
+    return .Error(message: "Function 'error' expected string, got \(values[0])")
+  }
+  return .Error(message: message)
 }
 
 // MARK: - Initialization
@@ -807,6 +850,7 @@ extension Environment {
     // String functions
     addBuiltinFunction("print", builtin_print)
     addBuiltinFunction("error", builtin_error)
+    addBuiltinFunction("load", builtin_load)
   }
 
   func addUsefulFunctions() {
@@ -878,7 +922,7 @@ extension Environment {
     ]
 
     for x in xs {
-      let v = parse(x)
+      let v = parseREPL(x)
       if case .Error(let message) = v.eval(self) {
         print("Error: \(message)")
       }
@@ -922,11 +966,11 @@ while true {
 
   lines += input
 
-  let v = parse(lines)
-  if case .Error(let message) = v {
-    print("Error: \(message)")
+  let expr = parseREPL(lines)
+  if case .Error(let message) = expr {
+    print("Parse error: \(message)")
   } else {
-    debugPrint(v.eval(e))
+    debugPrint(expr.eval(e))
   }
 
   lines = ""
