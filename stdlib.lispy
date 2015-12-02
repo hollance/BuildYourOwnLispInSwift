@@ -1,0 +1,75 @@
+(doc {fun} "Shortcut for defining functions. Usage: fun {add-together x y} {+ x y}")
+(def {fun} (\ {args body} {def (head args) (\ (tail args) body)}))
+
+(doc {unpack} "Apply a function that normally takes a variable number of arguments to a list. Usage: unpack + {1 2 3}")
+(fun {unpack f xs} {eval (join (list f) xs)})
+
+(doc {curry} "Synonym for unpack.")
+(def {curry} unpack)
+
+(doc {pack} "Apply a function that normally takes a list to a variable number of arguments. Usage: pack head 1 2 3" )
+(fun {pack f & xs} {f xs})
+
+(doc {uncurry} "Synonym for pack.")
+(def {uncurry} pack)
+
+(doc {reverse} "Reverse the order of the items in the list. Usage: reverse {list}")
+(fun {reverse l} {
+  if (== l {})
+    {{}}
+    {join (reverse (tail l)) (head l)}
+})
+
+(doc {len} "Count the number of items in a list. Usage: len {list}")
+(fun {len l} {
+  if (== l {})
+    {0}
+    {+ 1 (len (tail l))}
+})
+
+(doc {select} "Return the nth item from a list. Usage: select {list} n")
+(fun {select l n} {
+  if (== n 0)
+  { unlist (head l) }
+  { select (tail l) (- n 1) }
+})
+
+(doc {contains} "Return 1 if a value is a member of a list, otherwise 0. Usage: contains {list} value")
+(fun {contains l e} {
+  if (== 0 (len l))
+    { 0 }
+    { if (== e (unlist (head l)))
+      { 1 }
+      { contains (tail l) e }}
+})
+
+(doc {last} "Return the last item of a list. Usage: last {list}")
+(fun {last l} {
+  if (== 0 (len l))
+    { {} }
+    { if (== 1 (len l))
+      { unlist (head l) }
+      { last (tail l) }}
+})
+
+(doc {and} "Logical AND")
+(fun {and x y} {
+  if (!= x 0)
+  { if (!= y 0) { 1 } { 0 } }
+  { 0 }
+})
+
+(doc {and} "Logical OR")
+(fun {or x y} {
+  if (!= x 0)
+  { 1 }
+  { if (!= y 0) { 1 } { 0 } }
+})
+
+(doc {and} "Logical NOT")
+(fun {not x} {
+  if (== x 0) { 1 } { 0 }
+})
+
+(doc {pi} "Approximation of π")
+(def {pi} 3)

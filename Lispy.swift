@@ -741,6 +741,24 @@ let builtin_lambda: Builtin = { env, values in
   return .Lambda(env: Environment(), formals: symbols, body: values[1])
 }
 
+let builtin_print: Builtin = { env, values in
+  for value in values {
+    print(value, terminator: " ")
+  }
+  print("")
+  return Value.empty()
+}
+
+let builtin_error: Builtin = { env, values in
+  if values.count != 1 {
+    return .Error(message: "Function 'error' expected 1 argument, got \(values.count)")
+  }
+  guard case .Text(var message) = values[0] else {
+    return .Error(message: "Function 'error' expected string, got \(values[0])")
+  }
+  return .Error(message: message)
+}
+
 // MARK: - Parser
 
 /*
@@ -827,7 +845,8 @@ private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) ->
 }
 
 // In order to tell expressions apart from each other in the file, each must be
-// wrapped in ( ) parentheses.
+// wrapped in ( ) parentheses. This function parses the first of those S-Expressions
+// it finds. You keep calling this function until you reach the end of the file.
 func parseFile(s: String, inout _ i: String.Index) -> Value? {
   while i < s.endIndex {
     let c = s[i]
@@ -847,14 +866,7 @@ func parseREPL(s: String) -> Value {
 
 // MARK: - Functions for strings
 
-let builtin_load: Builtin = { env, values in
-  guard values.count == 1 else {
-    return .Error(message: "Function 'load' expected 1 argument, got \(values.count)")
-  }
-  guard case .Text(var filename) = values[0] else {
-    return .Error(message: "Function 'load' expected string, got \(values[0])")
-  }
-
+func importFile(env: Environment, _ filename: String) -> Value {
   do {
     let s = try String(contentsOfFile: filename, encoding: NSUTF8StringEncoding)
     var i = s.startIndex
@@ -876,22 +888,14 @@ let builtin_load: Builtin = { env, values in
   }
 }
 
-let builtin_print: Builtin = { env, values in
-  for value in values {
-    print(value, terminator: " ")
+let builtin_load: Builtin = { env, values in
+  guard values.count == 1 else {
+    return .Error(message: "Function 'load' expected 1 argument, got \(values.count)")
   }
-  print("")
-  return Value.empty()
-}
-
-let builtin_error: Builtin = { env, values in
-  if values.count != 1 {
-    return .Error(message: "Function 'error' expected 1 argument, got \(values.count)")
+  guard case .Text(var filename) = values[0] else {
+    return .Error(message: "Function 'load' expected string, got \(values[0])")
   }
-  guard case .Text(var message) = values[0] else {
-    return .Error(message: "Function 'error' expected string, got \(values[0])")
-  }
-  return .Error(message: message)
+  return importFile(env, filename)
 }
 
 // MARK: - Initialization
@@ -901,10 +905,10 @@ extension Environment {
     let table = [
       ("eval", "Evaluate a Q-Expression. Usage: eval {q-expr}", builtin_eval),
       ("list", "Convert one or more values into a Q-Expression. Usage: list value1 value2...", builtin_list),
-      ("head", "Return the first value from a Q-Expression. Usage: head {q-expr]", builtin_head),
-      ("tail", "Return a new Q-Expression with the first value removed. Usage: tail {q-expr}", builtin_tail),
-      ("join", "Combine one or more Q-Expressions into a new one. Usage: join {q-expr1} {q-expr2}...", builtin_join),
-      ("cons", "Append a value to the front of a Q-Expression. Usage: cons value {q-expr}", builtin_cons),
+      ("head", "Return the first value from a Q-Expression. Usage: head {list}", builtin_head),
+      ("tail", "Return a new Q-Expression with the first value removed. Usage: tail {list}", builtin_tail),
+      ("join", "Combine one or more Q-Expressions into a new one. Usage: join {list} {list}...", builtin_join),
+      ("cons", "Append a value to the front of a Q-Expression. Usage: cons value {list}", builtin_cons),
       ("unlist", "TEMPORARY FIX FOR head", builtin_unlist),
 
       ("+", "Add two numbers", builtin_add),
@@ -939,88 +943,14 @@ extension Environment {
       addBuiltinFunction(name, descr, builtin)
     }
   }
-
-  func addUsefulFunctions() {
-    let xs = [
-      // Allows you to write: fun {add-together x y} {+ x y}
-      "def {fun} (\\ {args body} {def (head args) (\\ (tail args) body)})",
-
-      "fun {unpack f xs} {eval (join (list f) xs)}",
-      "def {curry} unpack",
-
-      "fun {pack f & xs} {f xs}",
-      "def {uncurry} pack",
-
-      // Reverses the elements from a list.
-      "doc {reverse} \"Usage: reverse list. Reverses the order of the items in the list.\"",
-      "fun {reverse l} {" +
-      "  if (== l {})" +
-      "    {{}}" +
-      "    {join (reverse (tail l)) (head l)}" +
-      "}",
-
-      // Determines the number of items in a list.
-      "fun {len l} {" +
-      "  if (== l {})" +
-      "    {0}" +
-      "    {+ 1 (len (tail l))}" +
-      "}",
-
-      // Returns the nth items from a list.
-      "fun {select l n} {" +
-        "if (== n 0)" +
-        "{ unlist (head l) }" +
-        "{ select (tail l) (- n 1) }" +
-      "}",
-
-      // Returns 1 if an element is a member of a list, otherwise 0.
-      "fun {contains l e} {" +
-        "if (== 0 (len l))" +
-        "  { 0 }" +
-        "  { if (== e (unlist (head l)))" +
-        "    { 1 }" +
-        "    { contains (tail l) e }}" +
-      "}",
-
-      // Returns the last element of a list.
-      "fun {last l} {" +
-        "if (== 0 (len l))" +
-          "{ {} }" +
-          "{ if (== 1 (len l))" +
-            "{ unlist (head l) }" +
-            "{ last (tail l) }}" +
-      "}",
-
-      // Logical operators.
-      "fun {and x y} {" +
-        "if (!= x 0)" +
-        "{ if (!= y 0) { 1 } { 0 } }" +
-        "{ 0 }" +
-      "}",
-
-      "fun {or x y} {" +
-        "if (!= x 0)" +
-        "{ 1 }" +
-        "{ if (!= y 0) { 1 } { 0 } }" +
-      "}",
-
-      "fun {not x} {" +
-        "if (== x 0) { 1 } { 0 }" +
-      "}",
-    ]
-
-    for x in xs {
-      let v = parseREPL(x)
-      if case .Error(let message) = v.eval(self) {
-        print("Error: \(message)")
-      }
-    }
-  }
 }
 
 let e = Environment()
 e.addBuiltinFunctions()
-e.addUsefulFunctions()
+
+if case .Error(let message) = importFile(e, "stdlib.lispy") {
+  print("Error loading standard library. \(message)")
+}
 
 // MARK: - REPL
 
