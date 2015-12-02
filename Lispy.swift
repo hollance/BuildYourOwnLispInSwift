@@ -97,7 +97,10 @@ func ==(lhs: Value, rhs: Value) -> Bool {
   }
 }
 
-extension Value: CustomStringConvertible {
+extension Value: CustomStringConvertible, CustomDebugStringConvertible {
+  // The non-debug description is used to print the results of evaluating
+  // expressions to stdout using the "print" built-in function. It shows the
+  // real value of the object, without any extra fluff.
   var description: String {
     switch self {
     case .Error(let message):
@@ -105,7 +108,7 @@ extension Value: CustomStringConvertible {
     case Number(let value):
       return "\(value)"
     case Text(let value):
-      return "\"\(value.escaped())\""
+      return "\(value)"
     case Symbol(let name):
       return name
     case BuiltinFunction(let name, _):
@@ -124,6 +127,17 @@ extension Value: CustomStringConvertible {
       return "(" + listToString(values) + ")"
     case QExpression(let values):
       return "{" + listToString(values) + "}"
+    }
+  }
+
+  // The debug description is used to print the results of evaluating 
+  // expressions inside the REPL, as well as to print the environment.
+  var debugDescription: String {
+    switch self {
+    case Text(let value):
+      return "\"\(value.escaped())\""
+    default:
+      return description
     }
   }
 
@@ -226,8 +240,8 @@ class Environment {
   }
 }
 
-extension Environment: CustomStringConvertible {
-  var description: String {
+extension Environment: CustomDebugStringConvertible {
+  var debugDescription: String {
     var s = ""
     if parent == nil {
       s += "---Environment (global)---\n"
@@ -239,7 +253,7 @@ extension Environment: CustomStringConvertible {
       if case .BuiltinFunction = value {
         s += "\(name) \(value.typeName)\n"
       } else {
-        s += "\(name) \(value.typeName) \(value)\n"
+        s += "\(name) \(value.typeName) \(value.debugDescription)\n"
       }
     }
     return s + "--------------------------"
@@ -616,7 +630,7 @@ let builtin_put: Builtin = { env, values in
 
 // Prints out the contents of the environment.
 let builtin_printenv: Builtin = { env, values in
-  print(env)
+  debugPrint(env)
   return Value.empty()
 }
 
@@ -643,6 +657,26 @@ let builtin_lambda: Builtin = { env, values in
   }
 
   return .Lambda(env: Environment(), formals: symbols, body: values[1])
+}
+
+// MARK: - Functions for strings
+
+let builtin_print: Builtin = { env, values in
+  for value in values {
+    print(value, terminator: " ")
+  }
+  print("")
+  return Value.empty()
+}
+
+let builtin_error: Builtin = { env, values in
+  if values.count != 1 {
+    return .Error(message: "Function 'error' expected 1 argument, got \(values.count)")
+  }
+  guard case .Text(var message) = values[0] else {
+    return .Error(message: "Function 'error' expected string, got \(values[0])")
+  }
+  return .Error(message: message)
 }
 
 // MARK: - Parser
@@ -769,6 +803,10 @@ extension Environment {
     addBuiltinFunction("=", builtin_put)
     addBuiltinFunction("\\", builtin_lambda)
     addBuiltinFunction("printenv", builtin_printenv)
+
+    // String functions
+    addBuiltinFunction("print", builtin_print)
+    addBuiltinFunction("error", builtin_error)
   }
 
   func addUsefulFunctions() {
@@ -888,7 +926,7 @@ while true {
   if case .Error(let message) = v {
     print("Error: \(message)")
   } else {
-    print(v.eval(e))
+    debugPrint(v.eval(e))
   }
 
   lines = ""
