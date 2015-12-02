@@ -115,9 +115,9 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
       return "<\(name)>"
     case Lambda(let env, let formals, let body):
       var s = "(\\ {\(listToString(formals))} \(body))"
-      if !env.dictionary.isEmpty {
+      if !env.defs.isEmpty {
         s += " ["
-        for (k, v) in env.dictionary {
+        for (k, v) in env.defs {
           s += " \(k)=\(v)"
         }
         s += " ]"
@@ -200,7 +200,8 @@ extension Value: ArrayLiteralConvertible {
 // MARK: - Environment
 
 class Environment {
-  private(set) var dictionary = [String: Value]()
+  private(set) var defs = [String: Value]()
+  private(set) var docs = [String: String]()
 
   var parent: Environment?
 
@@ -208,13 +209,13 @@ class Environment {
   // (because Environment is a reference type, not a value type).
   func copy() -> Environment {
     let e = Environment()
-    e.dictionary = dictionary
+    e.defs = defs
     e.parent = parent
     return e
   }
 
   func get(name: String) -> Value {
-    if let v = dictionary[name] {
+    if let v = defs[name] {
       return v
     } else if let parent = parent {
       return parent.get(name)
@@ -224,7 +225,22 @@ class Environment {
   }
 
   func put(name name: String, value: Value) {
-    dictionary[name] = value
+    defs[name] = value
+  }
+
+  // For making functions and other values self-documenting.
+  func getDoc(name: String) -> String {
+    if let v = docs[name] {
+      return v
+    } else if let parent = parent {
+      return parent.getDoc(name)
+    } else {
+      return ""
+    }
+  }
+
+  func putDoc(name name: String, descr: String) {
+    docs[name] = descr
   }
 
   func globalEnvironment() -> Environment {
@@ -235,8 +251,9 @@ class Environment {
     return env
   }
 
-  func addBuiltinFunction(name: String, _ code: Builtin) {
+  func addBuiltinFunction(name: String, _ descr: String = "", _ code: Builtin) {
     put(name: name, value: .BuiltinFunction(name: name, code: code))
+    putDoc(name: name, descr: descr)
   }
 }
 
@@ -248,14 +265,50 @@ extension Environment: CustomDebugStringConvertible {
     } else {
       s += "---Environment (local)---\n"
     }
-    for name in dictionary.keys.sort(<) {
-      let value = dictionary[name]!
-      if case .BuiltinFunction = value {
-        s += "\(name) \(value.typeName)\n"
-      } else {
-        s += "\(name) \(value.typeName) \(value.debugDescription)\n"
+
+    var builtins = [(String, Value)]()
+    var lambdas = [(String, Value)]()
+    var variables = [(String, Value)]()
+
+    for name in defs.keys.sort(<) {
+      let value = defs[name]!
+      switch value {
+      case .BuiltinFunction:
+        builtins.append((name, value))
+      case .Lambda:
+        lambdas.append((name, value))
+      default:
+        variables.append((name, value))
       }
     }
+
+    s += "Built-in functions:\n"
+    for (name, _) in builtins {
+      s += "\(name)"
+      if let descr = docs[name] {
+        s += "\n   \(descr)"
+      }
+      s += "\n"
+    }
+
+    s += "\nUser-defined lambdas:\n"
+    for (name, value) in lambdas {
+      s += "\(name)"
+      if let descr = docs[name] {
+        s += "\n   \(descr)"
+      }
+      s += "\n   \(value.debugDescription)\n"
+    }
+
+    s += "\nVariables:\n"
+    for (name, value) in variables {
+      s += "\(name): \(value.typeName) = \(value.debugDescription)"
+      if let descr = docs[name] {
+        s += "\n   \(descr)"
+      }
+      s += "\n"
+    }
+
     return s + "--------------------------"
   }
 }
@@ -416,21 +469,6 @@ let builtin_tail: Builtin = { env, values in
   return .QExpression(values: qvalues)
 }
 
-// Returns all of a Q-Expression except the final value.
-let builtin_init: Builtin = { env, values in
-  if values.count != 1 {
-    return .Error(message: "Function 'init' expected 1 argument, got \(values.count)")
-  }
-  guard case .QExpression(var qvalues) = values[0] else {
-    return .Error(message: "Function 'init' expected Q-Expression, got \(values[0])")
-  }
-  if qvalues.count == 0 {
-    return .Error(message: "Function 'init' expected non-empty Q-Expression, got {}")
-  }
-  qvalues.removeLast()
-  return .QExpression(values: qvalues)
-}
-
 // Takes one or more Q-Expressions and puts them all into a single new Q-Expression.
 let builtin_join: Builtin = { env, values in
   var allValues = [Value]()
@@ -588,6 +626,50 @@ let builtin_if: Builtin = { env, values in
 }
 
 // MARK: - Functions for variables and lambdas
+
+let builtin_help: Builtin = { env, values in
+  guard values.count == 1 else {
+    return .Error(message: "Function 'help' expected 1 argument, got \(values.count)")
+  }
+  guard case .QExpression(var qvalues) = values[0] else {
+    return .Error(message: "Function 'help' expected Q-Expression, got \(values[0])")
+  }
+  guard qvalues.count == 1 else {
+    return .Error(message: "Function 'help' expected Q-Expression with 1 symbol")
+  }
+  guard case .Symbol(let name) = qvalues[0] else {
+    return .Error(message: "Function 'help' expected symbol, got \(qvalues[0])")
+  }
+
+  let descr = env.getDoc(name)
+  if descr != "" {
+    print(descr)
+  } else {
+    print("No documentation found for '\(name)'")
+  }
+  return Value.empty()
+}
+
+let builtin_doc: Builtin = { env, values in
+  guard values.count == 2 else {
+    return .Error(message: "Function 'doc' expected 2 arguments, got \(values.count)")
+  }
+  guard case .QExpression(var qvalues) = values[0] else {
+    return .Error(message: "Function 'doc' expected Q-Expression, got \(values[0])")
+  }
+  guard case .Text(let descr) = values[1] else {
+    return .Error(message: "Function 'doc' expected number, got \(values[1])")
+  }
+  guard qvalues.count == 1 else {
+    return .Error(message: "Function 'doc' expected Q-Expression with 1 symbol")
+  }
+  guard case .Symbol(let name) = qvalues[0] else {
+    return .Error(message: "Function 'doc' expected symbol, got \(qvalues[0])")
+  }
+
+  env.putDoc(name: name, descr: descr)
+  return Value.empty()
+}
 
 // Associates a new value with a symbol. This adds it to the environment.
 // Takes a Q-Expression and one or more values.
@@ -816,41 +898,46 @@ let builtin_error: Builtin = { env, values in
 
 extension Environment {
   func addBuiltinFunctions() {
-    // List functions
-    addBuiltinFunction("eval", builtin_eval)
-    addBuiltinFunction("list", builtin_list)
-    addBuiltinFunction("head", builtin_head)
-    addBuiltinFunction("tail", builtin_tail)
-    addBuiltinFunction("init", builtin_init)
-    addBuiltinFunction("join", builtin_join)
-    addBuiltinFunction("cons", builtin_cons)
-    addBuiltinFunction("unlist", builtin_unlist)
+    let table = [
+      ("eval", "Evaluate a Q-Expression. Usage: eval {q-expr}", builtin_eval),
+      ("list", "Convert one or more values into a Q-Expression. Usage: list value1 value2...", builtin_list),
+      ("head", "Return the first value from a Q-Expression. Usage: head {q-expr]", builtin_head),
+      ("tail", "Return a new Q-Expression with the first value removed. Usage: tail {q-expr}", builtin_tail),
+      ("join", "Combine one or more Q-Expressions into a new one. Usage: join {q-expr1} {q-expr2}...", builtin_join),
+      ("cons", "Append a value to the front of a Q-Expression. Usage: cons value {q-expr}", builtin_cons),
+      ("unlist", "TEMPORARY FIX FOR head", builtin_unlist),
 
-    // Mathematical functions
-    addBuiltinFunction("+", builtin_add)
-    addBuiltinFunction("-", builtin_subtract)
-    addBuiltinFunction("*", builtin_multiply)
-    addBuiltinFunction("/", builtin_divide)
+      ("+", "Add two numbers", builtin_add),
+      ("-", "Subtract two numbers", builtin_subtract),
+      ("*", "Multiply two numbers", builtin_multiply),
+      ("/", "Divide two numbers", builtin_divide),
 
-    // Comparison functions
-    addBuiltinFunction(">", builtin_gt)
-    addBuiltinFunction("<", builtin_lt)
-    addBuiltinFunction(">=", builtin_ge)
-    addBuiltinFunction("<=", builtin_le)
-    addBuiltinFunction("==", builtin_eq)
-    addBuiltinFunction("!=", builtin_ne)
-    addBuiltinFunction("if", builtin_if)
+      (">", "Greater than", builtin_gt),
+      ("<", "Less than", builtin_lt),
+      (">=", "Greater than or equal to", builtin_ge),
+      ("<=", "Less than or equal to", builtin_le),
+      ("==", "Equals", builtin_eq),
+      ("!=", "Not equals", builtin_ne),
+      ("if", "Usage: if condition { true clause } { false clause }", builtin_if),
 
-    // Variable and lambda functions
-    addBuiltinFunction("def", builtin_def)
-    addBuiltinFunction("=", builtin_put)
-    addBuiltinFunction("\\", builtin_lambda)
-    addBuiltinFunction("printenv", builtin_printenv)
+      ("doc", "Add description to a symbol. Usage: doc {symbol} \"help text\"", builtin_doc),
+      ("help", "Print out information about a function or any other defined value. Usage: help {symbol}", builtin_help),
 
-    // String functions
-    addBuiltinFunction("print", builtin_print)
-    addBuiltinFunction("error", builtin_error)
-    addBuiltinFunction("load", builtin_load)
+      ("def", "Bind names to one or more values in the global environment. Usage: def {symbol1 symbol2 ...} value1 value2...", builtin_def),
+      ("=", "Bind names to one or more values in the current function's environment. Usage: = {symbol1 symbol2 ...} value1 value2...", builtin_put),
+
+      ("\\", "Create a lambda. Usage: \\ {parameter names} {function body}", builtin_lambda),
+
+      ("print", "Print a value to stdout. Usage: print value", builtin_print),
+      ("printenv", "Print the current environment to stdout. Useful for debugging. Usage: printenv 1", builtin_printenv),
+      ("error", "Create an error value. Usage: error \"message\"", builtin_error),
+
+      ("load", "Import a LISP file and evaluate it. Usage: load \"filename.lispy\"", builtin_load),
+    ]
+
+    for (name, descr, builtin) in table {
+      addBuiltinFunction(name, descr, builtin)
+    }
   }
 
   func addUsefulFunctions() {
@@ -865,6 +952,7 @@ extension Environment {
       "def {uncurry} pack",
 
       // Reverses the elements from a list.
+      "doc {reverse} \"Usage: reverse list. Reverses the order of the items in the list.\"",
       "fun {reverse l} {" +
       "  if (== l {})" +
       "    {{}}" +
