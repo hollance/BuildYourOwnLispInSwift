@@ -393,6 +393,15 @@ let builtin_cons: Builtin = { env, values in
   return .QExpression(values: [values[0]] + qvalues)
 }
 
+// Takes a Q-Expression and returns the first value. This function exists because
+// 'head' returns a new Q-Expression but sometimes you just want the value.
+let builtin_unlist: Builtin = { _, values in
+  guard case .QExpression(let qvalues) = values[0] else {
+    return .Error(message: "Function 'unlist' expected Q-Expression, got \(values[0])")
+  }
+  return qvalues[0]
+}
+
 // MARK: - Mathematical functions
 
 typealias Operator = (Value, Value) -> Value
@@ -674,6 +683,7 @@ extension Environment {
     addBuiltinFunction("init", builtin_init)
     addBuiltinFunction("join", builtin_join)
     addBuiltinFunction("cons", builtin_cons)
+    addBuiltinFunction("unlist", builtin_unlist)
 
     // Mathematical functions
     addBuiltinFunction("+", builtin_add)
@@ -720,6 +730,48 @@ extension Environment {
       "  if (== l {})" +
       "    {0}" +
       "    {+ 1 (len (tail l))}" +
+      "}",
+
+      // Returns the nth items from a list.
+      "fun {select l n} {" +
+        "if (== n 0)" +
+        "{ unlist (head l) }" +
+        "{ select (tail l) (- n 1) }" +
+      "}",
+
+      // Returns 1 if an element is a member of a list, otherwise 0.
+      "fun {contains l e} {" +
+        "if (== 0 (len l))" +
+        "  { 0 }" +
+        "  { if (== e (unlist (head l)))" +
+        "    { 1 }" +
+        "    { contains (tail l) e }}" +
+      "}",
+
+      // Returns the last element of a list.
+      "fun {last l} {" +
+        "if (== 0 (len l))" +
+          "{ {} }" +
+          "{ if (== 1 (len l))" +
+            "{ unlist (head l) }" +
+            "{ last (tail l) }}" +
+      "}",
+
+      // Logical operators.
+      "fun {and x y} {" +
+        "if (!= x 0)" +
+        "{ if (!= y 0) { 1 } { 0 } }" +
+        "{ 0 }" +
+      "}",
+
+      "fun {or x y} {" +
+        "if (!= x 0)" +
+        "{ 1 }" +
+        "{ if (!= y 0) { 1 } { 0 } }" +
+      "}",
+
+      "fun {not x} {" +
+        "if (== x 0) { 1 } { 0 }" +
       "}",
     ]
 
