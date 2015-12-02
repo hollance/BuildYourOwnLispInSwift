@@ -898,6 +898,50 @@ let builtin_load: Builtin = { env, values in
   return importFile(env, filename)
 }
 
+// MARK: - REPL
+
+func readInput() -> String {
+  let keyboard = NSFileHandle.fileHandleWithStandardInput()
+  let inputData = keyboard.availableData
+  let string = NSString(data: inputData, encoding: NSUTF8StringEncoding)!
+  return string.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
+}
+
+func repl(env: Environment) {
+  print("Lispy Version 0.14")
+  print("Press Ctrl+C to Exit")
+
+  var lines = ""
+
+  while true {
+    print("lispy> ", terminator: "")
+    fflush(__stdoutp)
+
+    let input = readInput()
+
+    // Does the line end with a semicolon? Then keep listening for more input.
+    if !input.isEmpty {
+      let lastIndex = input.endIndex.predecessor()
+      if input[lastIndex] == ";" {
+        let s = input[input.startIndex ..< lastIndex]
+        lines += "\(s)\n"
+        continue
+      }
+    }
+
+    lines += input
+
+    let expr = parseREPL(lines)
+    if case .Error(let message) = expr {
+      print("Parse error: \(message)")
+    } else {
+      debugPrint(expr.eval(env))
+    }
+
+    lines = ""
+  }
+}
+
 // MARK: - Initialization
 
 extension Environment {
@@ -952,44 +996,14 @@ if case .Error(let message) = importFile(e, "stdlib.lispy") {
   print("Error loading standard library. \(message)")
 }
 
-// MARK: - REPL
-
-func readInput() -> String {
-  let keyboard = NSFileHandle.fileHandleWithStandardInput()
-  let inputData = keyboard.availableData
-  let string = NSString(data: inputData, encoding: NSUTF8StringEncoding)!
-  return string.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
-}
-
-print("Lispy Version 0.14")
-print("Press Ctrl+C to Exit")
-
-var lines = ""
-
-while true {
-  print("lispy> ", terminator: "")
-  fflush(__stdoutp)
-
-  let input = readInput()
-
-  // Does the line end with a semicolon? Then keep listening for more input.
-  if !input.isEmpty {
-    let lastIndex = input.endIndex.predecessor()
-    if input[lastIndex] == ";" {
-      let s = input[input.startIndex ..< lastIndex]
-      lines += "\(s)\n"
-      continue
+var args = Process.arguments
+if args.count > 1 {
+  args.removeFirst()
+  for arg in args {
+    if case .Error(let message) = importFile(e, arg) {
+      print(message)
     }
   }
-
-  lines += input
-
-  let expr = parseREPL(lines)
-  if case .Error(let message) = expr {
-    print("Parse error: \(message)")
-  } else {
-    debugPrint(expr.eval(e))
-  }
-
-  lines = ""
+} else {
+  repl(e)
 }
