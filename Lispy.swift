@@ -118,7 +118,7 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
       if !env.defs.isEmpty {
         s += " ["
         for (k, v) in env.defs {
-          s += " \(k)=\(v)"
+          s += " \(k)=\(v.debugDescription)"
         }
         s += " ]"
       }
@@ -130,7 +130,7 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
     }
   }
 
-  // The debug description is used to print the results of evaluating 
+  // The debug description is used to print the results of evaluating
   // expressions inside the REPL, as well as to print the environment.
   var debugDescription: String {
     switch self {
@@ -141,12 +141,12 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
     }
   }
 
-  private func listToString(values: [Value]) -> String {
-    return values.map({ $0.description }).joinWithSeparator(" ")
-  }
-
   private func listToString(values: [String]) -> String {
     return values.joinWithSeparator(" ")
+  }
+
+  private func listToString(values: [Value]) -> String {
+    return values.map({ $0.debugDescription }).joinWithSeparator(" ")
   }
 
   var typeName: String {
@@ -261,9 +261,9 @@ extension Environment: CustomDebugStringConvertible {
   var debugDescription: String {
     var s = ""
     if parent == nil {
-      s += "---Environment (global)---\n"
+      s += "----------Environment (global)----------\n"
     } else {
-      s += "---Environment (local)---\n"
+      s += "----------Environment (local)-----------\n"
     }
 
     var builtins = [(String, Value)]()
@@ -304,12 +304,12 @@ extension Environment: CustomDebugStringConvertible {
     for (name, value) in variables {
       s += "\(name): \(value.typeName) = \(value.debugDescription)"
       if let descr = docs[name] {
-        s += "\n   \(descr)"
+        s += ", \(descr)"
       }
       s += "\n"
     }
 
-    return s + "--------------------------"
+    return s + "----------------------------------------"
   }
 }
 
@@ -480,26 +480,6 @@ let builtin_join: Builtin = { env, values in
     }
   }
   return .QExpression(values: allValues)
-}
-
-// Takes a value and a Q-Expression and appends the value to the front of the list.
-let builtin_cons: Builtin = { env, values in
-  if values.count != 2 {
-    return .Error(message: "Function 'cons' expected 2 arguments, got \(values.count)")
-  }
-  guard case .QExpression(let qvalues) = values[1] else {
-    return .Error(message: "Function 'cons' expected Q-Expression, got \(values[1])")
-  }
-  return .QExpression(values: [values[0]] + qvalues)
-}
-
-// Takes a Q-Expression and returns the first value. This function exists because
-// 'head' returns a new Q-Expression but sometimes you just want the value.
-let builtin_unlist: Builtin = { _, values in
-  guard case .QExpression(let qvalues) = values[0] else {
-    return .Error(message: "Function 'unlist' expected Q-Expression, got \(values[0])")
-  }
-  return qvalues[0]
 }
 
 // MARK: - Mathematical functions
@@ -908,7 +888,7 @@ func readInput() -> String {
 }
 
 func repl(env: Environment) {
-  print("Lispy Version 0.14")
+  print("Lispy Version 0.15")
   print("Press Ctrl+C to Exit")
 
   var lines = ""
@@ -952,8 +932,6 @@ extension Environment {
       ("head", "Return the first value from a Q-Expression. Usage: head {list}", builtin_head),
       ("tail", "Return a new Q-Expression with the first value removed. Usage: tail {list}", builtin_tail),
       ("join", "Combine one or more Q-Expressions into a new one. Usage: join {list} {list}...", builtin_join),
-      ("cons", "Append a value to the front of a Q-Expression. Usage: cons value {list}", builtin_cons),
-      ("unlist", "TEMPORARY FIX FOR head", builtin_unlist),
 
       ("+", "Add two numbers", builtin_add),
       ("-", "Subtract two numbers", builtin_subtract),
@@ -968,19 +946,19 @@ extension Environment {
       ("!=", "Not equals", builtin_ne),
       ("if", "Usage: if condition { true clause } { false clause }", builtin_if),
 
-      ("doc", "Add description to a symbol. Usage: doc {symbol} \"help text\"", builtin_doc),
-      ("help", "Print out information about a function or any other defined value. Usage: help {symbol}", builtin_help),
-
       ("def", "Bind names to one or more values in the global environment. Usage: def {symbol1 symbol2 ...} value1 value2...", builtin_def),
       ("=", "Bind names to one or more values in the current function's environment. Usage: = {symbol1 symbol2 ...} value1 value2...", builtin_put),
 
       ("\\", "Create a lambda. Usage: \\ {parameter names} {function body}", builtin_lambda),
 
       ("print", "Print a value to stdout. Usage: print value", builtin_print),
-      ("printenv", "Print the current environment to stdout. Useful for debugging. Usage: printenv 1", builtin_printenv),
       ("error", "Create an error value. Usage: error \"message\"", builtin_error),
 
       ("load", "Import a LISP file and evaluate it. Usage: load \"filename.lispy\"", builtin_load),
+
+      ("doc", "Add description to a symbol. Usage: doc {symbol} \"help text\"", builtin_doc),
+      ("help", "Print out information about a function or any other defined value. Usage: help {symbol}", builtin_help),
+      ("printenv", "Print the current environment to stdout. Useful for debugging. Usage: printenv 1", builtin_printenv),
     ]
 
     for (name, descr, builtin) in table {

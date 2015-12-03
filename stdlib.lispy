@@ -1,8 +1,14 @@
+(def {nil} {})
+(def {true} 1)
+(def {false} 0)
+
 (doc {fun} "Shortcut for defining functions. Usage: fun {add-together x y} {+ x y}")
-(def {fun} (\ {args body} {def (head args) (\ (tail args) body)}))
+(def {fun} (\ {args body} {
+  def (head args) (\ (tail args) body)
+}))
 
 (doc {unpack} "Apply a function that normally takes a variable number of arguments to a list. Usage: unpack + {1 2 3}")
-(fun {unpack f xs} {eval (join (list f) xs)})
+(fun {unpack f l} {eval (join (list f) l)})
 
 (doc {curry} "Synonym for unpack.")
 (def {curry} unpack)
@@ -15,55 +21,136 @@
 
 (doc {reverse} "Reverse the order of the items in the list. Usage: reverse {list}")
 (fun {reverse l} {
-  if (== l {})
-    {{}}
-    {join (reverse (tail l)) (head l)}
+  if (== l nil)
+    { nil }
+    { join (reverse (tail l)) (head l) }
 })
 
 (doc {len} "Count the number of items in a list. Usage: len {list}")
 (fun {len l} {
-  if (== l {})
-    {0}
-    {+ 1 (len (tail l))}
+  if (== l nil) { 0 } { + 1 (len (tail l)) }
 })
 
-(doc {select} "Return the nth item from a list. Usage: select {list} n")
-(fun {select l n} {
-  if (== n 0)
-  { unlist (head l) }
-  { select (tail l) (- n 1) }
-})
+(doc {first} "Return the first item from a list. Usage: first {list}")
+(fun {first l} { eval (head l) })
 
-(doc {contains} "Return 1 if a value is a member of a list, otherwise 0. Usage: contains {list} value")
-(fun {contains l e} {
-  if (== 0 (len l))
-    { 0 }
-    { if (== e (unlist (head l)))
-      { 1 }
-      { contains (tail l) e }}
-})
+(doc {second} "Return the second item from a list. Usage: second {list}")
+(fun {second l} { eval (head (tail l)) })
+
+(doc {third} "Return the third item from a list. Usage: third {list}")
+(fun {third l} { eval (head (tail (tail l))) })
 
 (doc {last} "Return the last item of a list. Usage: last {list}")
 (fun {last l} {
-  if (== 0 (len l))
-    { {} }
-    { if (== 1 (len l))
-      { unlist (head l) }
-      { last (tail l) }}
+  if (== l nil)
+    { nil }
+    { if (== 1 (len l)) { first l } { last (tail l) }}
 })
+
+(doc {nth} "Return the nth item from a list. Usage: nth number {list}")
+(fun {nth n l} {
+  if (== n 0) { first l } { nth (- n 1) (tail l) }
+})
+
+(doc {contains} "Return 1 if a value is a member of a list, otherwise 0. Usage: contains value {list}")
+(fun {contains e l} {
+  if (== l nil)
+    { false }
+    { if (== e (first l)) { true } { contains e (tail l) }}
+})
+
+(doc {take} "Take the first n items into a new list. Usage: take number {list}")
+(fun {take n l} {
+  if (== n 0)
+    { nil }
+    { join (head l) (take (- n 1) (tail l)) }
+})
+
+(doc {drop} "Remove the first n items from a list. Usage: drop number {list}")
+(fun {drop n l} {
+  if (== n 0) { l } { drop (- n 1) (tail l) }
+})
+
+(doc {split} "Split a list into two sublists at the nth item. Usage: split number {list}")
+(fun {split n l} {list (take n l) (drop n l)})
+
+(doc {map} "Apply a function to all items in a list. Usage: map func {list}")
+(fun {map f l} {
+  if (== l nil)
+    { nil }
+    { join (list (f (first l))) (map f (tail l)) }
+})
+
+(doc {filter} "Removes items from a list that do not match the given condition. Usage: filter (\\ {x} {...}) {list}")
+(fun {filter f l} {
+  if (== l nil)
+    { nil }
+    { join (if (f (first l)) {head l} {nil}) (filter f (tail l)) }
+})
+
+(doc {foldl} "Fold left. Usage: foldl (\\ {accumulator x} {...}) base-value {list}")
+(fun {foldl f z l} {
+  if (== l nil) 
+    { z }
+    { foldl f (f z (first l)) (tail l) }
+})
+
+(fun {sum l} {foldl + 0 l})
+(fun {product l} {foldl * 1 l})
+
+(doc {cons} "Append a value to the front of a Q-Expression. Usage: cons value {list}")
+(fun {cons x l} { join (list x) l })
+
+(doc {do} "Perform several things in sequence. Usage: do (thing1) (thing2)...")
+(fun {do & l} {
+  if (== l nil) { nil } { last l }
+})
+
+(doc {let} "Open a new scope. Usage: let { do (...) }")
+(fun {let b} {
+  ((\ {_} b) ())
+})
+
+(doc {select} "Usage: select {cond1 ...} {cond2 ...} {otherwise ...}")
+(fun {select & cs} {
+  if (== cs nil)
+    { error "No selection found" }
+    { if (first (first cs)) {second (first cs)} {unpack select (tail cs)} }
+})
+
+(doc {otherwise} "The final clause in a select function. Usage: select {...} {...} {otherwise ...}")
+(def {otherwise} true)
+
+(doc {case} "Usage: case condition {val1 ...} {val2 ...}...")
+(fun {case x & cs} {
+  if (== cs nil)
+    { error "No case found" }
+    { if (== x (first (first cs))) 
+      { second (first cs) } 
+      { unpack case (join (list x) (tail cs)) }}
+})
+
+(doc {flip} "Apply a function with its two arguments swapped. Usage: flip func arg1 arg2")
+(fun {flip f a b} {f b a})
+
+(doc {ghost} "'ghost arg1 arg2' is the same as writing 'eval (list arg1 arg2...)'")
+(fun {ghost & xs} {eval xs})
+
+(doc {comp} "Composition of two functions. Usage: comp func1 func2 arg")
+(fun {comp f g x} {f (g x)})
 
 (doc {and} "Logical AND")
 (fun {and x y} {
   if (!= x 0)
-  { if (!= y 0) { 1 } { 0 } }
-  { 0 }
+    { if (!= y 0) { 1 } { 0 } }
+    { 0 }
 })
 
 (doc {and} "Logical OR")
 (fun {or x y} {
   if (!= x 0)
-  { 1 }
-  { if (!= y 0) { 1 } { 0 } }
+    { 1 }
+    { if (!= y 0) { 1 } { 0 } }
 })
 
 (doc {and} "Logical NOT")
@@ -71,5 +158,5 @@
   if (== x 0) { 1 } { 0 }
 })
 
-(doc {pi} "Approximation of π")
+(doc {pi} "Approximation of π. :-)")
 (def {pi} 3)

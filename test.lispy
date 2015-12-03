@@ -4,3 +4,29 @@
 
 (print (reverse my-list))
 
+(fun {month-day-suffix i} {
+  select
+    {(== i 0)  "st"}
+    {(== i 1)  "nd"}
+    {(== i 3)  "rd"}
+    {otherwise "th"}
+})
+
+(fun {day-name x} {
+  case x
+    {0 "Monday"}
+    {1 "Tuesday"}
+    {2 "Wednesday"}
+    {3 "Thursday"}
+    {4 "Friday"}
+    {5 "Saturday"}
+    {6 "Sunday"}
+})
+
+{doc {fib} "The obligatory Fibonacci function. Usage: fib number")
+(fun {fib n} {
+  select
+    { (== n 0) 0 }
+    { (== n 1) 1 }
+    { otherwise (+ (fib (- n 1)) (fib (- n 2))) }
+})
