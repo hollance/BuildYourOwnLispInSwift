@@ -23,7 +23,7 @@ enum Value {
 
   // An integer number. Also used for boolean values, where 0 is false, != 0 is 
   // true. Currently there is no support for real numbers (i.e. Double).
-  case Number(value: Int)
+  case Integer(value: Int)
 
   // A text string.
   case Text(value: String)
@@ -68,8 +68,8 @@ enum Value {
 
     // Create the AST for the S-Expression (+ 123 456)
     let v1 = Value.Symbol(name: "+")
-    let v2 = Value.Number(value: "123")
-    let v3 = Value.Number(value: "456")
+    let v2 = Value.Integer(value: "123")
+    let v3 = Value.Integer(value: "456")
     let v4 = Value.SExpression(values: [v1, v2, v3])
     // And evaluate it...
     let result = v4.eval(env)
@@ -81,24 +81,24 @@ enum Value {
     let result = v.eval(env)
 
   Swift automatically figures out that "+" is a Symbol and that 123 and 456 are
-  Number values.
+  Integer values.
 
   It's not super useful, because you almost never need to create an AST by hand
   but it's nice for when you want to test something without using the parser.
 */
 
-// Allows you to write true instead of Value.Number(1); false becomes Value(0).
+// Allows you to write true instead of Value.Integer(1); false becomes Value(0).
 extension Value: BooleanLiteralConvertible {
   init(booleanLiteral value: Bool) {
-    self = .Number(value: value ? 1 : 0)
+    self = .Integer(value: value ? 1 : 0)
   }
 }
 
-// Allows you to write 123 instead of Value.Number(123).
+// Allows you to write 123 instead of Value.Integer(123).
 extension Value: IntegerLiteralConvertible {
   typealias IntegerLiteralType = Int
   init(integerLiteral value: IntegerLiteralType) {
-    self = .Number(value: value)
+    self = .Integer(value: value)
   }
 }
 
@@ -156,7 +156,7 @@ func ==(lhs: Value, rhs: Value) -> Bool {
   switch (lhs, rhs) {
   case (.Error(let message1), .Error(let message2)):
     return message1 == message2
-  case (.Number(let value1), .Number(let value2)):
+  case (.Integer(let value1), .Integer(let value2)):
     return value1 == value2
   case (.Text(let value1), .Text(let value2)):
     return value1 == value2
@@ -251,7 +251,7 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
     switch self {
     case .Error(let message):
       return "Error: \(message)"
-    case Number(let value):
+    case Integer(let value):
       return "\(value)"
     case Text(let value):
       return "\"\(value.escaped())\""
@@ -288,7 +288,7 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
   var typeName: String {
     switch self {
     case Error: return "Error"
-    case Number: return "Number"
+    case Integer: return "Integer"
     case Text: return "String"
     case Symbol: return "Symbol"
     case SExpression: return "S-Expression"
@@ -620,19 +620,19 @@ let builtin_join: Builtin = { env, values in
 }
 
 /*
-  The following are mathematical operators. These only work on Number values.
+  The following are mathematical operators. These only work on Integer values.
 */
 
 typealias BinaryOperator = (Value, Value) -> Value
 
 func curry(op: (Int, Int) -> Int)(_ lhs: Value, _ rhs: Value) -> Value {
-  guard case .Number(let x) = lhs else {
+  guard case .Integer(let x) = lhs else {
     return .Error(message: "Expected number, got \(lhs)")
   }
-  guard case .Number(let y) = rhs else {
+  guard case .Integer(let y) = rhs else {
     return .Error(message: "Expected number, got \(rhs)")
   }
-  return .Number(value: op(x, y))
+  return .Integer(value: op(x, y))
 }
 
 func performOnList(env: Environment, var _ values: [Value], _ op: BinaryOperator) -> Value {
@@ -650,8 +650,8 @@ let builtin_add: Builtin = { env, values in
 
 let builtin_subtract: Builtin = { env, values in
   if values.count == 1 {
-    if case .Number(let x) = values[0] {  // unary negation
-      return .Number(value: -x)
+    if case .Integer(let x) = values[0] {  // unary negation
+      return .Integer(value: -x)
     } else {
       return .Error(message: "Expected number, got \(values[0])")
     }
@@ -666,7 +666,7 @@ let builtin_multiply: Builtin = { env, values in
 
 let builtin_divide: Builtin = { env, values in
   performOnList(env, values) { lhs, rhs in
-    if case .Number(let y) = rhs where y == 0 {
+    if case .Integer(let y) = rhs where y == 0 {
       return .Error(message: "Division by zero")
     } else {
       return curry(/)(lhs, rhs)
@@ -675,17 +675,17 @@ let builtin_divide: Builtin = { env, values in
 }
 
 /*
-  The following are comparison operators. These only work on Number values.
+  The following are comparison operators. These only work on Integer values.
 */
 
 func curry(op: (Int, Int) -> Bool)(_ lhs: Value, _ rhs: Value) -> Value {
-  guard case .Number(let x) = lhs else {
+  guard case .Integer(let x) = lhs else {
     return .Error(message: "Expected number, got \(lhs)")
   }
-  guard case .Number(let y) = rhs else {
+  guard case .Integer(let y) = rhs else {
     return .Error(message: "Expected number, got \(rhs)")
   }
-  return .Number(value: op(x, y) ? 1 : 0)
+  return .Integer(value: op(x, y) ? 1 : 0)
 }
 
 func comparison(env: Environment, var _ values: [Value], _ op: BinaryOperator) -> Value {
@@ -714,7 +714,7 @@ let builtin_le: Builtin = { env, values in
 
 let builtin_eq: Builtin = { env, values in
   if values.count == 2 {
-    return .Number(value: values[0] == values[1] ? 1 : 0)
+    return .Integer(value: values[0] == values[1] ? 1 : 0)
   } else {
     return .Error(message: "'==' expected 1 arguments, got \(values.count)")
   }
@@ -722,7 +722,7 @@ let builtin_eq: Builtin = { env, values in
 
 let builtin_ne: Builtin = { env, values in
   if values.count == 2 {
-    return .Number(value: values[0] != values[1] ? 1 : 0)
+    return .Integer(value: values[0] != values[1] ? 1 : 0)
   } else {
     return .Error(message: "'!=' expected 2 arguments, got \(values.count)")
   }
@@ -732,7 +732,7 @@ let builtin_if: Builtin = { env, values in
   guard values.count == 3 else {
     return .Error(message: "'if' expected 3 arguments, got \(values.count)")
   }
-  guard case .Number(let cond) = values[0] else {
+  guard case .Integer(let cond) = values[0] else {
     return .Error(message: "'if' expected number, got \(values[0])")
   }
   guard case .QExpression(var qvalues1) = values[1] else {
@@ -907,7 +907,7 @@ private func tokenizeString(s: String, inout _ i: String.Index) -> Value {
 
 private func tokenizeAtom(s: String) -> Value {
   if let i = Int(s) {
-    return .Number(value: i)
+    return .Integer(value: i)
   } else {
     return .Symbol(name: s)
   }
