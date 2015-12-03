@@ -621,11 +621,15 @@ let builtin_help: Builtin = { env, values in
     return .Error(message: "Function 'help' expected symbol, got \(qvalues[0])")
   }
 
-  let descr = env.getDoc(name)
-  if descr != "" {
-    print(descr)
+  if name == "env" {
+    debugPrint(env)
   } else {
-    print("No documentation found for '\(name)'")
+    let descr = env.getDoc(name)
+    if descr != "" {
+      print(descr)
+    } else {
+      print("No documentation found for '\(name)'")
+    }
   }
   return Value.empty()
 }
@@ -688,12 +692,6 @@ let builtin_def: Builtin = { env, values in
 
 let builtin_put: Builtin = { env, values in
   return bindVariable(env, values)
-}
-
-// Prints out the contents of the environment.
-let builtin_printenv: Builtin = { env, values in
-  debugPrint(env)
-  return Value.empty()
 }
 
 let builtin_lambda: Builtin = { env, values in
@@ -957,8 +955,7 @@ extension Environment {
       ("load", "Import a LISP file and evaluate it. Usage: load \"filename.lispy\"", builtin_load),
 
       ("doc", "Add description to a symbol. Usage: doc {symbol} \"help text\"", builtin_doc),
-      ("help", "Print out information about a function or any other defined value. Usage: help {symbol}", builtin_help),
-      ("printenv", "Print the current environment to stdout. Useful for debugging. Usage: printenv 1", builtin_printenv),
+      ("help", "Print information about a function or any other defined value. Usage: help {symbol}. Use help {env} to print out the current environment.", builtin_help),
     ]
 
     for (name, descr, builtin) in table {
