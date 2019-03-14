@@ -1,6 +1,6 @@
 # Build Your Own LISP in Swift
 
-This is Daniel Holden's excellent [Build Your Own LISP](http://buildyourownlisp.com) tutorial converted to Swift 2.0 (Xcode 7.1 and up).
+This is Daniel Holden's excellent [Build Your Own LISP](http://buildyourownlisp.com) tutorial converted to Swift 4.2 (Xcode 10 and up).
 
 ## Usage
 

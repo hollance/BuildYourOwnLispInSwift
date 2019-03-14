@@ -15,22 +15,22 @@ import Foundation
   The Value enum describes a value, its type, and the data it holds.
 */
 
-typealias Builtin = (env: Environment, values: [Value]) -> Value
+typealias Builtin = (_ env: Environment, _ values: [Value]) -> Value
 
 enum Value {
-  // When an error has occurred, we create and return an Error value.
-  case Error(message: String)
+  // When an error has occurred, we create and return an error value.
+  case error(message: String)
 
   // An integer number. Also used for boolean values, where 0 is false, != 0 is 
-  // true. Currently there is no support for real numbers (i.e. Double).
-  case Integer(value: Int)
+  // true. Currently there is no support for real numbers (i.e. Float or Double).
+  case integer(value: Int)
 
   // A text string.
-  case Text(value: String)
+  case text(value: String)
 
   // A symbol is a name that you can bind to some other value. This is what you
   // use to create variables and named fuctions.
-  case Symbol(name: String)
+  case symbol(name: String)
 
   // An S-Expression is a piece of executable code. Example: (+ 1 2). Only code
   // in between ( ) parentheses is evaluated.
@@ -43,7 +43,7 @@ enum Value {
 
   // The built-in functions are the primitive operations of the language. These
   // are too low-level to express in LISP itself.
-  case BuiltinFunction(name: String, code: Builtin)
+  case builtinFunction(name: String, code: Builtin)
 
   // A lambda is a user-defined function. Example: \ {x y} {+ x y}. Usually you
   // bind this to a name with 'def' so that you can use it more than once.
@@ -56,7 +56,7 @@ enum Value {
   //
   // The Environment object is needed for partial function application, because
   // it has the values of the parameters that have been filled in already.
-  case Lambda(env: Environment, formals: [String], body: [Value])
+  case lambda(env: Environment, formals: [String], body: [Value])
 }
 
 // MARK: - Creating values
@@ -67,9 +67,9 @@ enum Value {
   Swift by writing:
 
     // Create the AST for the S-Expression (+ 123 456)
-    let v1 = Value.Symbol(name: "+")
-    let v2 = Value.Integer(value: "123")
-    let v3 = Value.Integer(value: "456")
+    let v1 = Value.symbol(name: "+")
+    let v2 = Value.integer(value: "123")
+    let v3 = Value.integer(value: "456")
     let v4 = Value.SExpression(values: [v1, v2, v3])
     // And evaluate it...
     let result = v4.eval(env)
@@ -87,41 +87,31 @@ enum Value {
   but it's nice for when you want to test something without using the parser.
 */
 
-// Allows you to write true instead of Value.Integer(1); false becomes Value(0).
-extension Value: BooleanLiteralConvertible {
+// Allows you to write true instead of Value.integer(1); false becomes Value(0).
+extension Value: ExpressibleByBooleanLiteral {
   init(booleanLiteral value: Bool) {
-    self = .Integer(value: value ? 1 : 0)
+    self = .integer(value: value ? 1 : 0)
   }
 }
 
-// Allows you to write 123 instead of Value.Integer(123).
-extension Value: IntegerLiteralConvertible {
+// Allows you to write 123 instead of Value.integer(123).
+extension Value: ExpressibleByIntegerLiteral {
   typealias IntegerLiteralType = Int
   init(integerLiteral value: IntegerLiteralType) {
-    self = .Integer(value: value)
+    self = .integer(value: value)
   }
 }
 
-// Allows you to write "A" instead of Value.Symbol("A").
-extension Value: StringLiteralConvertible {
+// Allows you to write "A" instead of Value.symbol("A").
+extension Value: ExpressibleByStringLiteral {
   typealias StringLiteralType = String
   init(stringLiteral value: StringLiteralType) {
-    self = .Symbol(name: value)
-  }
-
-  typealias ExtendedGraphemeClusterLiteralType = StringLiteralType
-  init(extendedGraphemeClusterLiteral value: ExtendedGraphemeClusterLiteralType) {
-    self = .Symbol(name: value)
-  }
-
-  typealias UnicodeScalarLiteralType = StringLiteralType
-  init(unicodeScalarLiteral value: UnicodeScalarLiteralType) {
-    self = .Symbol(name: value)
+    self = .symbol(name: value)
   }
 }
 
 // Turns an array of values into a Q-Expression.
-extension Value: ArrayLiteralConvertible {
+extension Value: ExpressibleByArrayLiteral {
   typealias Element = Value
   init(arrayLiteral elements: Element...) {
     self = .QExpression(values: elements)
@@ -129,7 +119,7 @@ extension Value: ArrayLiteralConvertible {
 }
 
 // Allows you to write nil to create an empty Q-Expression.
-extension Value: NilLiteralConvertible {
+extension Value: ExpressibleByNilLiteral {
   init(nilLiteral: ()) {
     self = .QExpression(values: [])
   }
@@ -149,26 +139,25 @@ extension Value {
   operator, both in Swift as in the LISP language itself.
 */
 
-extension Value: Equatable {
-}
+extension Value: Equatable { }
 
 func ==(lhs: Value, rhs: Value) -> Bool {
   switch (lhs, rhs) {
-  case (.Error(let message1), .Error(let message2)):
+  case (.error(let message1), .error(let message2)):
     return message1 == message2
-  case (.Integer(let value1), .Integer(let value2)):
+  case (.integer(let value1), .integer(let value2)):
     return value1 == value2
-  case (.Text(let value1), .Text(let value2)):
+  case (.text(let value1), .text(let value2)):
     return value1 == value2
-  case (.Symbol(let name1), .Symbol(let name2)):
+  case (.symbol(let name1), .symbol(let name2)):
     return name1 == name2
   case (.SExpression(let values1), .SExpression(let values2)):
     return values1 == values2
   case (.QExpression(let values1), .QExpression(let values2)):
     return values1 == values2
-  case (.BuiltinFunction(let name1, _), .BuiltinFunction(let name2, _)):
+  case (.builtinFunction(let name1, _), .builtinFunction(let name2, _)):
     return name1 == name2
-  case (.Lambda(_, let formals1, let body1), .Lambda(_, let formals2, let body2)):
+  case (.lambda(_, let formals1, let body1), .lambda(_, let formals2, let body2)):
     return formals1 == formals2 && body1 == body2
   default:
     return false
@@ -189,12 +178,12 @@ extension String {
   // a string literal in source code.
   func escaped() -> String {
     var out = ""
-    for c in self.characters {
+    for c in self {
       switch c {
-      case "\n": out += "\\n"
-      case "\t": out += "\\t"
-      case "\\": out += "\\\\"
-      default:   out += "\(c)"
+        case "\n": out += "\\n"
+        case "\t": out += "\\t"
+        case "\\": out += "\\\\"
+        default:   out += "\(c)"
       }
     }
     return out
@@ -206,15 +195,15 @@ extension String {
     var i = startIndex
     while i < endIndex {
       let c = self[i]
-      i = i.successor()
+      i = index(after: i)
       if c == "\\" && i < endIndex {
         switch self[i] {
-        case "n":  out += "\n"
-        case "t":  out += "\t"
-        case "\\": out += "\\"
-        default:   out += "\(self[i])"
+          case "n":  out += "\n"
+          case "t":  out += "\t"
+          case "\\": out += "\\"
+          default:   out += "\(self[i])"
         }
-        i = i.successor()
+        i = index(after: i)
       } else {
         out += "\(c)"
       }
@@ -240,7 +229,7 @@ extension String {
 extension Value: CustomStringConvertible, CustomDebugStringConvertible {
   var description: String {
     switch self {
-    case Text(let value):
+    case .text(let value):
       return "\(value)"
     default:
       return debugDescription
@@ -249,21 +238,21 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
 
   var debugDescription: String {
     switch self {
-    case .Error(let message):
+    case .error(let message):
       return "Error: \(message)"
-    case Integer(let value):
+    case .integer(let value):
       return "\(value)"
-    case Text(let value):
+    case .text(let value):
       return "\"\(value.escaped())\""
-    case Symbol(let name):
+    case .symbol(let name):
       return name
-    case SExpression(let values):
+    case .SExpression(let values):
       return "(" + listToString(values) + ")"
-    case QExpression(let values):
+    case .QExpression(let values):
       return "{" + listToString(values) + "}"
-    case BuiltinFunction(let name, _):
+    case .builtinFunction(let name, _):
       return "<\(name)>"
-    case Lambda(let env, let formals, let body):
+    case .lambda(let env, let formals, let body):
       var s = "(\\ {\(listToString(formals))} {\(listToString(body))})"
 
       // If this lambda is a partially applied function, then also print the
@@ -277,24 +266,24 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
     }
   }
 
-  private func listToString(values: [String]) -> String {
-    return values.joinWithSeparator(" ")
+  private func listToString(_ values: [String]) -> String {
+    return values.joined(separator: " ")
   }
 
-  private func listToString(values: [Value]) -> String {
-    return values.map({ $0.debugDescription }).joinWithSeparator(" ")
+  private func listToString(_ values: [Value]) -> String {
+    return values.map({ $0.debugDescription }).joined(separator: " ")
   }
 
   var typeName: String {
     switch self {
-    case Error: return "Error"
-    case Integer: return "Integer"
-    case Text: return "String"
-    case Symbol: return "Symbol"
-    case SExpression: return "S-Expression"
-    case QExpression: return "Q-Expression"
-    case BuiltinFunction: return "Built-in Function"
-    case Lambda: return "Lambda"
+      case .error: return "Error"
+      case .integer: return "Integer"
+      case .text: return "String"
+      case .symbol: return "Symbol"
+      case .SExpression: return "S-Expression"
+      case .QExpression: return "Q-Expression"
+      case .builtinFunction: return "Built-in Function"
+      case .lambda: return "Lambda"
     }
   }
 }
@@ -308,7 +297,7 @@ extension Value: CustomStringConvertible, CustomDebugStringConvertible {
   These names and their associated values are stored in the environment.
 
   When a LISP program tries to evaluate a symbol, it looks up that name in the
-  environment and uses the associated value. It gives an Error value if the name
+  environment and uses the associated value. It gives a .error value if the name
   is not found.
 
   There is one "global" environment, which exists for the duration of the LISP
@@ -352,17 +341,17 @@ class Environment {
 
 // These methods add and retrieve values from the environment.
 extension Environment {
-  func get(name: String) -> Value {
+  func get(_ name: String) -> Value {
     if let value = defs[name] {
       return value
     } else if let parent = parent {
       return parent.get(name)
     } else {
-      return .Error(message: "Unbound symbol '\(name)'")
+      return .error(message: "Unbound symbol '\(name)'")
     }
   }
 
-  func put(name name: String, value: Value) {
+  func put(name: String, value: Value) {
     defs[name] = value
   }
 }
@@ -370,7 +359,7 @@ extension Environment {
 // The environment doesn't just store names and their values, but you can also
 // add a documentation string for a name.
 extension Environment {
-  func getDoc(name: String) -> String {
+  func getDoc(_ name: String) -> String {
     if let text = docs[name] {
       return text
     } else if let parent = parent {
@@ -380,7 +369,7 @@ extension Environment {
     }
   }
 
-  func putDoc(name name: String, descr: String) {
+  func putDoc(name: String, descr: String) {
     docs[name] = descr
   }
 }
@@ -399,12 +388,12 @@ extension Environment: CustomDebugStringConvertible {
     var lambdas = [(String, Value)]()
     var variables = [(String, Value)]()
 
-    for name in defs.keys.sort(<) {
+    for name in defs.keys.sorted(by: <) {
       let value = defs[name]!
       switch value {
-      case .BuiltinFunction:
+      case .builtinFunction:
         builtins.append((name, value))
-      case .Lambda:
+      case .lambda:
         lambdas.append((name, value))
       default:
         variables.append((name, value))
@@ -458,12 +447,12 @@ extension Environment: CustomDebugStringConvertible {
 */
 
 extension Value {
-  func eval(env: Environment) -> Value {
+  func eval(_ env: Environment) -> Value {
     // Uncomment the next line to see exactly what happens...
     //print("eval \(self.debugDescription)")
 
     switch self {
-    case .Symbol(let name):
+    case .symbol(let name):
       return env.get(name)
     case .SExpression(let values):
       return evalList(env, values)
@@ -473,17 +462,19 @@ extension Value {
   }
 
   // Evaluate the values inside the S-Expression recursively.
-  private func evalList(env: Environment, var _ values: [Value]) -> Value {
+  private func evalList(_ env: Environment, _ values: [Value]) -> Value {
+    var values = values
+
     // Evaluate children. If any of them are symbols, they will be converted 
     // into the associated value from the environment, such as a function, a 
     // number, or a Q-Expression.
-    for var i = 0; i < values.count; ++i {
+    for i in 0..<values.count {
       values[i] = values[i].eval(env)
     }
 
     // If any children are errors, return the first error we encounter.
     for value in values {
-      if case .Error = value { return value }
+      if case .error = value { return value }
     }
 
     // An empty expression has an empty result.
@@ -496,12 +487,12 @@ extension Value {
     // Ensure first value is a function, then call it on the remaining values.
     let first = values.removeFirst()
     switch first {
-    case .BuiltinFunction(_, let code):
-      return code(env: env, values: values)
-    case .Lambda(let localEnv, let formals, let body):
+    case .builtinFunction(_, let code):
+      return code(env, values)
+    case .lambda(let localEnv, let formals, let body):
       return evalLambda(env, localEnv.copy(), formals, values, body)
     default:
-      return .Error(message: "Expected function, got \(first)")
+      return .error(message: "Expected function, got \(first)")
     }
   }
 
@@ -510,14 +501,20 @@ extension Value {
   // variable number of arguments and we have to do some extra work. Once all
   // the arguments have values, we turn the function body into an S-Expression
   // and evaluate it.
-  private func evalLambda(parentEnv: Environment, _ localEnv: Environment, var _ formals: [String], var _ args: [Value], _ body: [Value]) -> Value {
+  private func evalLambda(_ parentEnv: Environment,
+                          _ localEnv: Environment,
+                          _ formals: [String],
+                          _ args: [Value],
+                          _ body: [Value]) -> Value {
+    var formals = formals
+    var args = args
     let given = args.count
     let expected = formals.count
 
     while args.count > 0 {
       // Have we ran out of formal arguments to bind?
       if formals.count == 0 {
-        return .Error(message: "Expected \(expected) arguments, got \(given)")
+        return .error(message: "Expected \(expected) arguments, got \(given)")
       }
 
       // Look at the next symbol from the formals.
@@ -526,7 +523,7 @@ extension Value {
       // Special case to deal with '&' for variable-argument lists.
       if sym == "&" {
         if formals.count != 1 {
-          return .Error(message: "Expected a single symbol following '&'")
+          return .error(message: "Expected a single symbol following '&'")
         }
         // The next formal should be bound to the remaining arguments.
         let nextSym = formals.removeFirst()
@@ -541,7 +538,7 @@ extension Value {
     // If a '&' remains in formal list, bind it to an empty Q-Expression.
     if formals.count > 0 && formals[0] == "&" {
       if formals.count != 2 {
-        return .Error(message: "Expected a single symbol following '&'")
+        return .error(message: "Expected a single symbol following '&'")
       }
       // Delete the '&' and associate the final symbol with an empty list.
       formals.removeFirst()
@@ -555,7 +552,7 @@ extension Value {
       return Value.SExpression(values: body).eval(localEnv)
     } else {
       // Otherwise return partially evaluated function.
-      return .Lambda(env: localEnv, formals: formals, body: body)
+      return .lambda(env: localEnv, formals: formals, body: body)
     }
   }
 }
@@ -572,36 +569,36 @@ let builtin_list: Builtin = { _, values in .QExpression(values: values) }
 
 let builtin_eval: Builtin = { env, values in
   guard values.count == 1 else {
-    return .Error(message: "'eval' expected 1 argument, got \(values.count)")
+    return .error(message: "'eval' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(let qvalues) = values[0] else {
-    return .Error(message: "'eval' expected Q-Expression, got \(values[0])")
+    return .error(message: "'eval' expected Q-Expression, got \(values[0])")
   }
   return Value.SExpression(values: qvalues).eval(env)
 }
 
 let builtin_head: Builtin = { _, values in
   guard values.count == 1 else {
-    return .Error(message: "'head' expected 1 argument, got \(values.count)")
+    return .error(message: "'head' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(let qvalues) = values[0] else {
-    return .Error(message: "'head' expected Q-Expression, got \(values[0])")
+    return .error(message: "'head' expected Q-Expression, got \(values[0])")
   }
   if qvalues.count == 0 {
-    return .Error(message: "'head' expected non-empty Q-Expression, got {}")
+    return .error(message: "'head' expected non-empty Q-Expression, got {}")
   }
   return .QExpression(values: [qvalues[0]])
 }
 
 let builtin_tail: Builtin = { env, values in
   guard values.count == 1 else {
-    return .Error(message: "'tail' expected 1 argument, got \(values.count)")
+    return .error(message: "'tail' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(var qvalues) = values[0] else {
-    return .Error(message: "'tail' expected Q-Expression, got \(values[0])")
+    return .error(message: "'tail' expected Q-Expression, got \(values[0])")
   }
   if qvalues.count == 0 {
-    return .Error(message: "'tail' expected non-empty Q-Expression, got {}")
+    return .error(message: "'tail' expected non-empty Q-Expression, got {}")
   }
   qvalues.removeFirst()
   return .QExpression(values: qvalues)
@@ -613,7 +610,7 @@ let builtin_join: Builtin = { env, values in
     if case .QExpression(let qvalues) = value {
       allValues += qvalues
     } else {
-      return .Error(message: "'join' expected Q-Expression, got \(value)")
+      return .error(message: "'join' expected Q-Expression, got \(value)")
     }
   }
   return .QExpression(values: allValues)
@@ -625,21 +622,23 @@ let builtin_join: Builtin = { env, values in
 
 typealias BinaryOperator = (Value, Value) -> Value
 
-func curry(op: (Int, Int) -> Int)(_ lhs: Value, _ rhs: Value) -> Value {
-  guard case .Integer(let x) = lhs else {
-    return .Error(message: "Expected number, got \(lhs)")
+func curry(_ op: @escaping (Int, Int) -> Int) -> (_ lhs: Value, _ rhs: Value) -> Value {
+  return { lhs, rhs in
+    guard case .integer(let x) = lhs else {
+      return .error(message: "Expected number, got \(lhs)")
+    }
+    guard case .integer(let y) = rhs else {
+      return .error(message: "Expected number, got \(rhs)")
+    }
+    return .integer(value: op(x, y))
   }
-  guard case .Integer(let y) = rhs else {
-    return .Error(message: "Expected number, got \(rhs)")
-  }
-  return .Integer(value: op(x, y))
 }
 
-func performOnList(env: Environment, var _ values: [Value], _ op: BinaryOperator) -> Value {
+func performOnList(_ env: Environment, _ values: [Value], _ op: BinaryOperator) -> Value {
   var x = values[0]
-  for var i = 1; i < values.count; ++i {
+  for i in 1..<values.count {
     x = op(x, values[i])
-    if case .Error = x { return x }
+    if case .error = x { return x }
   }
   return x
 }
@@ -650,10 +649,10 @@ let builtin_add: Builtin = { env, values in
 
 let builtin_subtract: Builtin = { env, values in
   if values.count == 1 {
-    if case .Integer(let x) = values[0] {  // unary negation
-      return .Integer(value: -x)
+    if case .integer(let x) = values[0] {  // unary negation
+      return .integer(value: -x)
     } else {
-      return .Error(message: "Expected number, got \(values[0])")
+      return .error(message: "Expected number, got \(values[0])")
     }
   } else {
     return performOnList(env, values, curry(-))
@@ -666,8 +665,8 @@ let builtin_multiply: Builtin = { env, values in
 
 let builtin_divide: Builtin = { env, values in
   performOnList(env, values) { lhs, rhs in
-    if case .Integer(let y) = rhs where y == 0 {
-      return .Error(message: "Division by zero")
+    if case .integer(let y) = rhs, y == 0 {
+      return .error(message: "Division by zero")
     } else {
       return curry(/)(lhs, rhs)
     }
@@ -678,68 +677,59 @@ let builtin_divide: Builtin = { env, values in
   The following are comparison operators. These only work on Integer values.
 */
 
-func curry(op: (Int, Int) -> Bool)(_ lhs: Value, _ rhs: Value) -> Value {
-  guard case .Integer(let x) = lhs else {
-    return .Error(message: "Expected number, got \(lhs)")
+func curry(_ op: @escaping (Int, Int) -> Bool) -> (_ lhs: Value, _ rhs: Value) -> Value {
+  return { lhs, rhs in
+    guard case .integer(let x) = lhs else {
+      return .error(message: "Expected number, got \(lhs)")
+    }
+    guard case .integer(let y) = rhs else {
+      return .error(message: "Expected number, got \(rhs)")
+    }
+    return .integer(value: op(x, y) ? 1 : 0)
   }
-  guard case .Integer(let y) = rhs else {
-    return .Error(message: "Expected number, got \(rhs)")
-  }
-  return .Integer(value: op(x, y) ? 1 : 0)
 }
 
-func comparison(env: Environment, var _ values: [Value], _ op: BinaryOperator) -> Value {
+func comparison(_ env: Environment, _ values: [Value], _ op: BinaryOperator) -> Value {
   if values.count == 2 {
     return op(values[0], values[1])
   } else {
-    return .Error(message: "Comparison expected 2 arguments, got \(values.count)")
+    return .error(message: "Comparison expected 2 arguments, got \(values.count)")
   }
 }
 
-let builtin_gt: Builtin = { env, values in
-  return comparison(env, values, curry(>))
-}
-
-let builtin_lt: Builtin = { env, values in
-  return comparison(env, values, curry(<))
-}
-
-let builtin_ge: Builtin = { env, values in
-  return comparison(env, values, curry(>=))
-}
-
-let builtin_le: Builtin = { env, values in
-  return comparison(env, values, curry(<=))
-}
+let builtin_gt: Builtin = { env, values in comparison(env, values, curry(>)) }
+let builtin_lt: Builtin = { env, values in comparison(env, values, curry(<)) }
+let builtin_ge: Builtin = { env, values in comparison(env, values, curry(>=)) }
+let builtin_le: Builtin = { env, values in comparison(env, values, curry(<=)) }
 
 let builtin_eq: Builtin = { env, values in
   if values.count == 2 {
-    return .Integer(value: values[0] == values[1] ? 1 : 0)
+    return .integer(value: values[0] == values[1] ? 1 : 0)
   } else {
-    return .Error(message: "'==' expected 1 arguments, got \(values.count)")
+    return .error(message: "'==' expected 1 arguments, got \(values.count)")
   }
 }
 
 let builtin_ne: Builtin = { env, values in
   if values.count == 2 {
-    return .Integer(value: values[0] != values[1] ? 1 : 0)
+    return .integer(value: values[0] != values[1] ? 1 : 0)
   } else {
-    return .Error(message: "'!=' expected 2 arguments, got \(values.count)")
+    return .error(message: "'!=' expected 2 arguments, got \(values.count)")
   }
 }
 
 let builtin_if: Builtin = { env, values in
   guard values.count == 3 else {
-    return .Error(message: "'if' expected 3 arguments, got \(values.count)")
+    return .error(message: "'if' expected 3 arguments, got \(values.count)")
   }
-  guard case .Integer(let cond) = values[0] else {
-    return .Error(message: "'if' expected number, got \(values[0])")
+  guard case .integer(let cond) = values[0] else {
+    return .error(message: "'if' expected number, got \(values[0])")
   }
-  guard case .QExpression(var qvalues1) = values[1] else {
-    return .Error(message: "'if' expected Q-Expression, got \(values[1])")
+  guard case .QExpression(let qvalues1) = values[1] else {
+    return .error(message: "'if' expected Q-Expression, got \(values[1])")
   }
-  guard case .QExpression(var qvalues2) = values[2] else {
-    return .Error(message: "'if' expected Q-Expression, got \(values[2])")
+  guard case .QExpression(let qvalues2) = values[2] else {
+    return .error(message: "'if' expected Q-Expression, got \(values[2])")
   }
 
   // If condition is true, evaluate first expression, otherwise second.
@@ -754,64 +744,59 @@ let builtin_if: Builtin = { env, values in
   Functions for creating variables and functions.
 */
 
-func bindVariable(env: Environment, _ values: [Value]) -> Value {
+func bindVariable(_ env: Environment, _ values: [Value]) -> Value {
   guard case .QExpression(let qvalues) = values[0] else {
-    return .Error(message: "Expected Q-Expression, got \(values[0])")
+    return .error(message: "Expected Q-Expression, got \(values[0])")
   }
 
   // Ensure all values from the Q-Expression are symbols.
   var symbols = [String]()
   for value in qvalues {
-    if case .Symbol(let name) = value {
+    if case .symbol(let name) = value {
       symbols.append(name)
     } else {
-      return .Error(message: "Expected symbol, got \(value)")
+      return .error(message: "Expected symbol, got \(value)")
     }
   }
 
   // Check correct number of symbols and values.
   if symbols.count != values.count - 1 {
-    return .Error(message: "Found \(symbols.count) symbols but \(values.count - 1) values")
+    return .error(message: "Found \(symbols.count) symbols but \(values.count - 1) values")
   }
 
   // Put the symbols and their associated values into the environment.
-  for (i, symbol) in symbols.enumerate() {
+  for (i, symbol) in symbols.enumerated() {
     env.put(name: symbol, value: values[i + 1])
   }
 
   return Value.empty()
 }
 
-let builtin_def: Builtin = { env, values in
-  return bindVariable(env.globalEnvironment(), values)
-}
-
-let builtin_put: Builtin = { env, values in
-  return bindVariable(env, values)
-}
+let builtin_def: Builtin = { env, values in bindVariable(env.globalEnvironment(), values) }
+let builtin_put: Builtin = { env, values in bindVariable(env, values) }
 
 let builtin_lambda: Builtin = { env, values in
   guard values.count == 2 else {
-    return .Error(message: "'\\' expected 2 arguments, got \(values.count)")
+    return .error(message: "'\\' expected 2 arguments, got \(values.count)")
   }
-  guard case .QExpression(var formalsValues) = values[0] else {
-    return .Error(message: "'\\' expected Q-Expression, got \(values[0])")
+  guard case .QExpression(let formalsValues) = values[0] else {
+    return .error(message: "'\\' expected Q-Expression, got \(values[0])")
   }
-  guard case .QExpression(var bodyValues) = values[1] else {
-    return .Error(message: "'\\' expected Q-Expression, got \(values[1])")
+  guard case .QExpression(let bodyValues) = values[1] else {
+    return .error(message: "'\\' expected Q-Expression, got \(values[1])")
   }
 
   // Check that the first Q-Expression contains only symbols.
   var symbols = [String]()
   for value in formalsValues {
-    if case .Symbol(let name) = value {
+    if case .symbol(let name) = value {
       symbols.append(name)
     } else {
-      return .Error(message: "Expected symbol, got \(value)")
+      return .error(message: "Expected symbol, got \(value)")
     }
   }
 
-  return .Lambda(env: Environment(), formals: symbols, body: bodyValues)
+  return .lambda(env: Environment(), formals: symbols, body: bodyValues)
 }
 
 /*
@@ -828,29 +813,29 @@ let builtin_print: Builtin = { env, values in
 
 let builtin_error: Builtin = { env, values in
   guard values.count == 1 else {
-    return .Error(message: "'error' expected 1 argument, got \(values.count)")
+    return .error(message: "'error' expected 1 argument, got \(values.count)")
   }
-  guard case .Text(var message) = values[0] else {
-    return .Error(message: "'error' expected string, got \(values[0])")
+  guard case .text(let message) = values[0] else {
+    return .error(message: "'error' expected string, got \(values[0])")
   }
-  return .Error(message: message)
+  return .error(message: message)
 }
 
 let builtin_doc: Builtin = { env, values in
   guard values.count == 2 else {
-    return .Error(message: "'doc' expected 2 arguments, got \(values.count)")
+    return .error(message: "'doc' expected 2 arguments, got \(values.count)")
   }
   guard case .QExpression(var qvalues) = values[0] else {
-    return .Error(message: "'doc' expected Q-Expression, got \(values[0])")
+    return .error(message: "'doc' expected Q-Expression, got \(values[0])")
   }
-  guard case .Text(let descr) = values[1] else {
-    return .Error(message: "'doc' expected number, got \(values[1])")
+  guard case .text(let descr) = values[1] else {
+    return .error(message: "'doc' expected number, got \(values[1])")
   }
   guard qvalues.count == 1 else {
-    return .Error(message: "'doc' expected Q-Expression with 1 symbol")
+    return .error(message: "'doc' expected Q-Expression with 1 symbol")
   }
-  guard case .Symbol(let name) = qvalues[0] else {
-    return .Error(message: "'doc' expected symbol, got \(qvalues[0])")
+  guard case .symbol(let name) = qvalues[0] else {
+    return .error(message: "'doc' expected symbol, got \(qvalues[0])")
   }
   env.putDoc(name: name, descr: descr)
   return Value.empty()
@@ -858,16 +843,16 @@ let builtin_doc: Builtin = { env, values in
 
 let builtin_help: Builtin = { env, values in
   guard values.count == 1 else {
-    return .Error(message: "'help' expected 1 argument, got \(values.count)")
+    return .error(message: "'help' expected 1 argument, got \(values.count)")
   }
   guard case .QExpression(var qvalues) = values[0] else {
-    return .Error(message: "'help' expected Q-Expression, got \(values[0])")
+    return .error(message: "'help' expected Q-Expression, got \(values[0])")
   }
   guard qvalues.count == 1 else {
-    return .Error(message: "'help' expected Q-Expression with 1 symbol")
+    return .error(message: "'help' expected Q-Expression with 1 symbol")
   }
-  guard case .Symbol(let name) = qvalues[0] else {
-    return .Error(message: "'help' expected symbol, got \(qvalues[0])")
+  guard case .symbol(let name) = qvalues[0] else {
+    return .error(message: "'help' expected symbol, got \(qvalues[0])")
   }
 
   if name == "env" {  // special value
@@ -891,35 +876,35 @@ let builtin_help: Builtin = { env, values in
   ignored. But it works if you don't try to break it too hard. ;-)
 */
 
-private func tokenizeString(s: String, inout _ i: String.Index) -> Value {
+private func tokenizeString(_ s: String, _ i: inout String.Index) -> Value {
   var out = ""
   while i < s.endIndex {
     let c = s[i]
-    i = i.successor()
+    i = s.index(after: i)
     if c == "\"" {
-      return .Text(value: out.unescaped())
+      return .text(value: out.unescaped())
     } else {
       out += "\(c)"
     }
   }
-  return .Error(message: "Expected \"")
+  return .error(message: "Expected \"")
 }
 
-private func tokenizeAtom(s: String) -> Value {
+private func tokenizeAtom(_ s: String) -> Value {
   if let i = Int(s) {
-    return .Integer(value: i)
+    return .integer(value: i)
   } else {
-    return .Symbol(name: s)
+    return .symbol(name: s)
   }
 }
 
-private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) -> Value {
+private func tokenizeList(_ s: String, _ i: inout String.Index, _ type: String) -> Value {
   var token = ""
   var array = [Value]()
 
   while i < s.endIndex {
     let c = s[i]
-    i = i.successor()
+    i = s.index(after: i)
 
     // Symbol or number found.
     if (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") ||
@@ -941,13 +926,13 @@ private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) ->
         if type == "(" {
           return .SExpression(values: array)
         } else {
-          return .Error(message: "Unexpected )")
+          return .error(message: "Unexpected )")
         }
       } else if c == "}" {
         if type == "{" {
           return .QExpression(values: array)
         } else {
-          return .Error(message: "Unexpected }")
+          return .error(message: "Unexpected }")
         }
       }
     }
@@ -959,9 +944,9 @@ private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) ->
   }
 
   if type == "(" {
-    return .Error(message: "Expected )")
+    return .error(message: "Expected )")
   } else if type == "{" {
-    return .Error(message: "Expected }")
+    return .error(message: "Expected }")
   } else if array.count == 1 {
     return array[0]
   } else {
@@ -973,10 +958,10 @@ private func tokenizeList(s: String, inout _ i: String.Index, _ type: String) ->
 // expressions apart from each other in the file, each must be wrapped in ( )
 // parentheses. This function parses the first of those S-Expressions it finds.
 // You repeatedly call this function until you reach the end of the file.
-func parseFile(s: String, inout _ i: String.Index) -> Value? {
+func parseFile(_ s: String, _ i: inout String.Index) -> Value? {
   while i < s.endIndex {
     let c = s[i]
-    i = i.successor()
+    i = s.index(after: i)
     if c == "(" {
       return tokenizeList(s, &i, "(")
     }
@@ -987,7 +972,7 @@ func parseFile(s: String, inout _ i: String.Index) -> Value? {
 // This is the function you'd call to parse input from the REPL. On the REPL,
 // expressions don't need to be surrounded by parentheses. We automatically
 // put the thing into an S-Expression.
-func parseREPL(s: String) -> Value {
+func parseREPL(_ s: String) -> Value {
   var i = s.startIndex
   return tokenizeList(s, &i, "")
 }
@@ -1000,20 +985,20 @@ func parseREPL(s: String) -> Value {
   execute a source file using the 'load' command.
 
   Note: Executing a source file does not produce any output unless you 'print'
-  it, or if there is an error.
+  it or if there is an error.
 */
 
-func importFile(env: Environment, _ filename: String) -> Value {
+func importFile(_ env: Environment, _ filename: String) -> Value {
   do {
-    let s = try String(contentsOfFile: filename, encoding: NSUTF8StringEncoding)
+    let s = try String(contentsOfFile: filename, encoding: .utf8)
     var i = s.startIndex
     while i < s.endIndex {
       if let expr = parseFile(s, &i) {
-        if case .Error(let message) = expr {
+        if case .error(let message) = expr {
           print("Parse error: \(message)")
         } else {
           let result = expr.eval(env)
-          if case .Error(let message) = result {
+          if case .error(let message) = result {
             print("Error: \(message)")
           }
         }
@@ -1021,16 +1006,16 @@ func importFile(env: Environment, _ filename: String) -> Value {
     }
     return Value.empty()
   } catch {
-    return .Error(message: "Could not load \(filename), reason: \(error)")
+    return .error(message: "Could not load \(filename), reason: \(error)")
   }
 }
 
 let builtin_load: Builtin = { env, values in
   guard values.count == 1 else {
-    return .Error(message: "Function 'load' expected 1 argument, got \(values.count)")
+    return .error(message: "Function 'load' expected 1 argument, got \(values.count)")
   }
-  guard case .Text(var filename) = values[0] else {
-    return .Error(message: "Function 'load' expected string, got \(values[0])")
+  guard case .text(let filename) = values[0] else {
+    return .error(message: "Function 'load' expected string, got \(values[0])")
   }
   return importFile(env, filename)
 }
@@ -1044,13 +1029,13 @@ let builtin_load: Builtin = { env, values in
 */
 
 func readInput() -> String {
-  let keyboard = NSFileHandle.fileHandleWithStandardInput()
+  let keyboard = FileHandle.standardInput
   let inputData = keyboard.availableData
-  let string = NSString(data: inputData, encoding: NSUTF8StringEncoding)!
-  return string.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
+  let string = String(data: inputData, encoding: .utf8)!
+  return string.trimmingCharacters(in: .newlines)
 }
 
-func repl(env: Environment) {
+func repl(_ env: Environment) {
   print("Lispy Version 0.16")
   print("Press Ctrl+C to Exit")
 
@@ -1062,7 +1047,7 @@ func repl(env: Environment) {
 
     // Does the line end with a semicolon? Then keep listening for more input.
     if !input.isEmpty {
-      let lastIndex = input.endIndex.predecessor()
+      let lastIndex = input.index(before: input.endIndex)
       if input[lastIndex] == ";" {
         let s = input[input.startIndex ..< lastIndex]
         lines += "\(s)\n"
@@ -1072,7 +1057,7 @@ func repl(env: Environment) {
 
     lines += input
     let expr = parseREPL(lines)
-    if case .Error(let message) = expr {
+    if case .error(let message) = expr {
       print("Parse error: \(message)")
     } else {
       debugPrint(expr.eval(env))
@@ -1089,8 +1074,8 @@ func repl(env: Environment) {
 */
 
 extension Environment {
-  func addBuiltinFunction(name: String, _ descr: String = "", _ code: Builtin) {
-    put(name: name, value: .BuiltinFunction(name: name, code: code))
+  func addBuiltinFunction(_ name: String, _ descr: String = "", _ code: @escaping Builtin) {
+    put(name: name, value: .builtinFunction(name: name, code: code))
     putDoc(name: name, descr: descr)
   }
 
@@ -1138,7 +1123,7 @@ extension Environment {
 let globalEnv = Environment()
 globalEnv.addBuiltinFunctions()
 
-if case .Error(let message) = importFile(globalEnv, "stdlib.lispy") {
+if case .error(let message) = importFile(globalEnv, "stdlib.lispy") {
   print("Error loading standard library. \(message)")
 }
 
@@ -1149,11 +1134,11 @@ if case .Error(let message) = importFile(globalEnv, "stdlib.lispy") {
   execute each of the specified source files.
 */
 
-var args = Process.arguments
+var args = CommandLine.arguments
 if args.count > 1 {
   args.removeFirst()
   for arg in args {
-    if case .Error(let message) = importFile(globalEnv, arg) {
+    if case .error(let message) = importFile(globalEnv, arg) {
       print(message)
     }
   }
